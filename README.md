@@ -1,7 +1,10 @@
 # Notice Me, Senpai! (NMS)
 
-GitLab の To-Do を、Windows のタスクバーに件数バッジで表示するデスクトップアプリです。
-レビュー依頼もメンションもアサインも、ブラウザを開かずに気付けます。もう見逃されません。
+GitLab の通知メールが多すぎて困っていませんか？  
+NMS は、GitLab の To-Do を Windows のタスクバーに件数バッジで表示するデスクトップアプリです。  
+レビュー依頼・メンション・アサインなどを、タスクバーのバッジや通知領域（トレイ）で一目で確認できます。
+
+※本アプリの開発には AI エージェントを使用しています。
 
 > **English:** A tiny Windows tray app that shows your GitLab To-Do count as a taskbar badge.
 > Works with GitLab.com and self-managed GitLab. Click an item to open it in your browser.
@@ -91,6 +94,17 @@ npm start
 npm run dist                # dist/NMS-<version>.exe（portable 形式）を出力
 node scripts/make-icon.js   # アイコン build/icon.ico を再生成（通常は不要）
 ```
+
+### リリース
+
+`package.json` の `version` を上げてコミットし、同じ番号のタグを push すると、GitHub Actions がビルドして Releases に `NMS-<version>.exe` を公開します。
+
+```
+npm version patch           # version を上げてコミットとタグ v0.1.1 を作成
+git push --follow-tags
+```
+
+タグと `package.json` の `version` が一致しない場合、ビルドは失敗します。
 
 ### 仕組み
 
