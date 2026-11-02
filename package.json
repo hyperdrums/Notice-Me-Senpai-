@@ -1,0 +1,35 @@
+{
+  "name": "notice-me-senpai",
+  "version": "0.1.0",
+  "description": "Notice Me, Senpai! (NMS) - GitLab の To-Do を Windows タスクバーの件数バッジで通知する",
+  "author": "hyperdrums",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/hyperdrums/Notice-Me-Senpai-.git"
+  },
+  "main": "src/main.js",
+  "private": true,
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder --win portable"
+  },
+  "build": {
+    "appId": "io.github.hyperdrums.notice-me-senpai",
+    "productName": "Notice Me, Senpai!",
+    "files": [
+      "src/**/*",
+      "package.json"
+    ],
+    "win": {
+      "target": "portable"
+    },
+    "portable": {
+      "artifactName": "NMS-${version}.exe"
+    }
+  },
+  "devDependencies": {
+    "electron": "^45.1.0",
+    "electron-builder": "^26.18.0"
+  }
+}

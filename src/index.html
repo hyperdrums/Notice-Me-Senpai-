@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'">
+<title>Notice Me, Senpai!</title>
+<style>
+  :root { color-scheme: light dark; --muted: #888; --line: #8884; --accent: #e24329; }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 13px "Segoe UI", "Yu Gothic UI", sans-serif; }
+  header { display: flex; gap: 8px; align-items: center; padding: 8px 10px; border-bottom: 1px solid var(--line); }
+  header .tab { cursor: pointer; padding: 4px 8px; border-radius: 4px; }
+  header .tab.active { background: var(--line); }
+  header .spacer { flex: 1; }
+  #status { color: var(--muted); font-size: 12px; }
+  #error { color: #d33; padding: 6px 10px; display: none; }
+  ul { list-style: none; margin: 0; padding: 0; }
+  li { display: flex; gap: 8px; padding: 8px 10px; border-bottom: 1px solid var(--line); cursor: pointer; }
+  li:hover { background: #8881; }
+  li .main { flex: 1; min-width: 0; }
+  li .title { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  li .meta, li .body { color: var(--muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .tag { display: inline-block; padding: 0 6px; border-radius: 3px; background: var(--accent); color: #fff; font-size: 11px; margin-right: 4px; }
+  button { font: inherit; padding: 3px 10px; cursor: pointer; }
+  li button { align-self: center; }
+  .empty { padding: 24px; text-align: center; color: var(--muted); }
+  .bar { display: flex; flex-wrap: wrap; gap: 4px; padding: 6px 10px; border-bottom: 1px solid var(--line); }
+  .bar:empty { display: none; }
+  .chip { cursor: pointer; padding: 1px 8px; border: 1px solid var(--line); border-radius: 10px; font-size: 12px; white-space: nowrap; }
+  .chip.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .repos .chip { border-radius: 4px; }
+  .due { font-weight: 600; }
+  .due.soon { color: #e8a317; }
+  .due.over { color: #d33; }
+  form { padding: 12px; display: grid; gap: 10px; }
+  label { display: grid; gap: 4px; }
+  label.check { display: flex; gap: 6px; align-items: center; }
+  input[type=text], input[type=password], input[type=number] { font: inherit; padding: 5px; }
+  .hint { color: var(--muted); font-size: 12px; }
+  .hidden { display: none !important; }
+</style>
+</head>
+<body>
+<header>
+  <span class="tab active" data-view="list">通知</span>
+  <span class="tab" data-view="due" id="dueTab">期限</span>
+  <span class="tab" data-view="settings">設定</span>
+  <span class="spacer"></span>
+  <span id="status"></span>
+  <button id="refresh">更新</button>
+</header>
+<div id="error"></div>
+
+<section id="list">
+  <div class="bar repos" id="todoRepos"></div>
+  <div class="bar" id="actions"></div>
+  <ul id="todos"></ul>
+</section>
+
+<section id="due" class="hidden">
+  <div class="bar repos" id="dueRepos"></div>
+  <ul id="issues"></ul>
+</section>
+
+<section id="settings" class="hidden">
+  <form id="form">
+    <label>GitLab URL
+      <input type="text" name="baseUrl" placeholder="https://gitlab.example.local">
+    </label>
+    <label>Personal Access Token（スコープ: read_api。完了操作もするなら api）
+      <input type="password" name="token" placeholder="保存済みの場合は空欄で維持">
+    </label>
+    <label>取得間隔（秒, 最小15）
+      <input type="number" name="intervalSec" min="15" step="5">
+    </label>
+    <label class="check"><input type="checkbox" name="notify"> 新着時にデスクトップ通知</label>
+    <label class="check"><input type="checkbox" name="autoStart"> Windows ログイン時に起動（最小化）</label>
+    <label class="check"><input type="checkbox" name="insecure"> 証明書エラーを無視（自己署名証明書のオンプレ用）</label>
+    <div><button type="submit">保存</button> <span id="saved" class="hint"></span></div>
+    <p class="hint">トークンは Windows の DPAPI で暗号化して保存されます。</p>
+  </form>
+</section>
+
+<script src="renderer.js"></script>
+</body>
+</html>
