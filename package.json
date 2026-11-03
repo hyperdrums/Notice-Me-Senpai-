@@ -13,6 +13,8 @@
   "scripts": {
     "start": "electron .",
     "test": "node --test \"test/**/*.test.js\"",
+    "test:gui": "node scripts/gui-test.js",
+    "mock": "node scripts/mock-gitlab.js 8080",
     "dist": "electron-builder --win portable"
   },
   "build": {

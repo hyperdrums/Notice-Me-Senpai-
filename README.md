@@ -98,6 +98,24 @@ npm test          # node --test（追加の依存ライブラリは使いませ�
 Electron の API や `document` を触るコードはここでテストできないので、`lib.js` に出すかどうかの目安にしてください。
 `lib.js` は `main.js` から `require()`、`renderer.js` からは `<script>` で読むため、**読み込みは 1 回だけ**にしてください（2 回読むと宣言の重複でエラーになります）。
 
+### GUI のテスト（モック GitLab）
+
+```
+npm run test:gui    # アプリを実起動して画面を検証（スクショは dist/gui-test/ に出ます）
+npm run mock        # モック GitLab だけ起動（http://127.0.0.1:8080 / glpat-mock-token）
+```
+
+本物の GitLab の代わりに `scripts/mock-gitlab.js` が API のふりをします。通知 4 件とアサイン Issue が入っていて、
+期限切れ（赤）・3日以内（橙）・マイルストーン期限まで再現するので、トークンを本物に切り替えずに画面を確認できます。
+
+- `scripts/gui-test.js` が、Chrome DevTools Protocol（依存ゼロの自作クライアント）で画面を読み、
+  件数・色分け・絞り込み・「完了」ボタン・新着のポーリングを 20 項目チェックします
+- `scripts/mock-config.js` が、テスト用の設定を本番と同じ DPAPI 暗号化で書き込みます
+- 手動で見るだけなら `npm run mock` を別に起動して、設定に URL とトークンを入れるだけ。
+  `curl -X POST http://127.0.0.1:8080/__push` で新着通知も再現できます
+
+実行中はウィンドウが実際に映ります。`test:gui` は新着も送るので、最後にデスクトップ通知が出ます。
+
 ### ビルド
 
 ```
