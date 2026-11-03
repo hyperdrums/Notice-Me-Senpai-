@@ -209,9 +209,10 @@ test('言語のラベルはどちらの言語でも探せる', () => {
 });
 
 // ---------- README ----------
-// GitHub のアンカー生成（小文字化 + 記号除去 + 空白→ハイフン）を真似る
+// GitHub のアンカー生成（小文字化 → 記号除去 → 空白ごとにハイフン）を再現する。
+// github-slugger は空白を 1 つずつハイフンに置き換えるので、連続空白を潰さないこと。
 const slug = (s) =>
-  s.trim().toLowerCase().replace(/[^\p{L}\p{N} ]/gu, '').replace(/ +/g, '-');
+  s.trim().toLowerCase().replace(/[^\p{L}\p{N} ]/gu, '').replace(/ /g, '-');
 
 test('README の目次は全て実際の見出しに解決できる', () => {
   const md = fs.readFileSync(path.join(__dirname, '..', 'README.md'), 'utf8');
