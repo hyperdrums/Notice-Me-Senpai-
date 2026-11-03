@@ -1,20 +1,7 @@
 const $ = s => document.querySelector(s);
 
-const ACTIONS = {
-  assigned: 'アサイン',
-  mentioned: 'メンション',
-  directly_addressed: 'メンション',
-  build_failed: 'CI失敗',
-  marked: 'To-Do追加',
-  approval_required: '承認依頼',
-  unmergeable: 'マージ不可',
-  merge_train_removed: 'マージトレイン除外',
-  review_requested: 'レビュー依頼',
-  member_access_requested: 'アクセス要求',
-  review_submitted: 'レビュー完了',
-};
-const TYPES = { MergeRequest: 'MR', Issue: 'Issue', Commit: 'Commit', Epic: 'Epic', DesignManagement__Design: 'Design' };
-
+// ago / dueInfo / todoRepo / issueRepo / shortName / tr / actionLabel は lib.js にある（Node でテストできる）
+let lang = 'ja';
 let current = { todos: [], issues: [], count: 0 };
 // 選択中のフィルタ（'all' = すべて）
 const filter = { action: 'all', todoRepo: 'all', dueRepo: 'all' };
@@ -28,8 +15,15 @@ document.querySelectorAll('.tab').forEach(tab => {
   };
 });
 
+// ---------- 言語 ----------
+// HTML 側に置いた固定文言を data-i18n で置き換える
+function applyI18n() {
+  document.documentElement.lang = lang === 'en' ? 'en' : 'ja';
+  document.title = tr(lang, 'appTitle');
+  for (const e of document.querySelectorAll('[data-i18n]')) e.textContent = tr(lang, e.dataset.i18n);
+}
+
 // ---------- 共通 ----------
-// ago / dueInfo / todoRepo / issueRepo / shortName は lib.js にある（Node でテストできる）
 function el(tag, cls, text) {
   const e = document.createElement(tag);
   if (cls) e.className = cls;
@@ -44,7 +38,8 @@ function renderChips(container, key, entries, labelOf = v => v, titleOf = () => 
   if (entries.size === 0) return;
   const total = [...entries.values()].reduce((a, b) => a + b, 0);
   for (const [value, n] of [['all', total], ...entries]) {
-    const c = el('span', `chip${filter[key] === value ? ' active' : ''}`, `${value === 'all' ? 'すべて' : labelOf(value)} ${n}`);
+    const label = value === 'all' ? tr(lang, 'all') : labelOf(value);
+    const c = el('span', `chip${filter[key] === value ? ' active' : ''}`, `${label} ${n}`);
     c.title = value === 'all' ? '' : titleOf(value);
     c.onclick = () => { filter[key] = value; render(current); };
     container.append(c);
@@ -59,15 +54,15 @@ function countBy(items, keyOf) {
 
 // ---------- 通知タブ ----------
 function renderTodos(todos, error) {
-  renderChips($('#todoRepos'), 'todoRepo', countBy(todos, todoRepo), shortName, p => p);
-  const inRepo = todos.filter(t => filter.todoRepo === 'all' || todoRepo(t) === filter.todoRepo);
-  const actionOf = t => ACTIONS[t.action_name] ?? t.action_name;
+  renderChips($('#todoRepos'), 'todoRepo', countBy(todos, t => todoRepo(t, lang)), shortName, p => p);
+  const inRepo = todos.filter(t => filter.todoRepo === 'all' || todoRepo(t, lang) === filter.todoRepo);
+  const actionOf = t => actionLabel(lang, t.action_name);
   renderChips($('#actions'), 'action', countBy(inRepo, actionOf));
   const shown = inRepo.filter(t => filter.action === 'all' || actionOf(t) === filter.action);
 
   const ul = $('#todos');
   ul.replaceChildren();
-  if (!shown.length && !error) ul.append(el('li', 'empty', '通知はありません'));
+  if (!shown.length && !error) ul.append(el('li', 'empty', tr(lang, 'emptyTodos')));
   for (const t of shown) {
     const li = el('li');
     const main = el('div', 'main');
@@ -78,15 +73,14 @@ function renderTodos(todos, error) {
     const meta = el('div', 'meta');
     // アサインは期限を表示（Issue の期限、なければマイルストーンの期限）
     if (t.action_name === 'assigned') {
-      const due = t.target?.due_date ? dueInfo(t.target.due_date)
-        : t.target?.milestone?.due_date ? dueInfo(t.target.milestone.due_date, 'MS期限') : null;
+      const due = dueInfoOr(t, lang);
       if (due) meta.append(el('span', due.cls, due.text), ' · ');
     }
-    meta.append(`${t.project?.name_with_namespace ?? t.group?.full_name ?? ''} · ${t.author?.name ?? ''} · ${ago(t.created_at)}`);
+    meta.append(`${t.project?.name_with_namespace ?? t.group?.full_name ?? ''} · ${t.author?.name ?? ''} · ${ago(t.created_at, { lang })}`);
     main.append(title, meta);
     if (t.body) main.append(el('div', 'body', t.body));
-    const btn = el('button', null, '完了');
-    btn.title = 'GitLab 上で To-Do を完了にする';
+    const btn = el('button', null, tr(lang, 'done'));
+    btn.title = lang === 'en' ? 'Mark this To-Do as done on GitLab' : 'GitLab 上で To-Do を完了にする';
     btn.onclick = e => { e.stopPropagation(); btn.disabled = true; window.api.done(t.id); };
     li.append(main, btn);
     li.onclick = () => window.api.open(t.target_url);
@@ -94,20 +88,29 @@ function renderTodos(todos, error) {
   }
 }
 
+// To-Do の期限。Issue の期限がなければマイルストーンを見る
+function dueInfoOr(t, lang) {
+  if (t.target?.due_date) return dueInfo(t.target.due_date, { lang });
+  if (t.target?.milestone?.due_date) return dueInfo(t.target.milestone.due_date, { prefix: tr(lang, 'msDuePrefix'), lang });
+  return null;
+}
+
 // ---------- 期限タブ ----------
 function renderIssues(issues, error) {
   renderChips($('#dueRepos'), 'dueRepo', countBy(issues, issueRepo), shortName, p => p);
   const shown = issues.filter(i => filter.dueRepo === 'all' || issueRepo(i) === filter.dueRepo);
-  const over = issues.filter(i => dueInfo(i.due_date).cls.includes('over')).length;
-  $('#dueTab').textContent = issues.length ? `期限 ${issues.length}${over ? ` (超過${over})` : ''}` : '期限';
+  const over = issues.filter(i => dueInfo(i.due_date, { lang }).cls.includes('over')).length;
+  $('#dueTab').textContent = issues.length
+    ? (over ? tr(lang, 'dueTabOver', { n: issues.length, m: over }) : tr(lang, 'dueTab', { n: issues.length }))
+    : tr(lang, 'tabDue');
 
   const ul = $('#issues');
   ul.replaceChildren();
-  if (!shown.length && !error) ul.append(el('li', 'empty', '期限付きのアサイン Issue はありません'));
+  if (!shown.length && !error) ul.append(el('li', 'empty', tr(lang, 'emptyIssues')));
   for (const i of shown) {
     const li = el('li');
     const main = el('div', 'main');
-    const due = dueInfo(i.due_date);
+    const due = dueInfo(i.due_date, { lang });
     main.append(
       el('div', 'title', `#${i.iid} ${i.title}`),
       el('div', 'meta'),
@@ -123,8 +126,8 @@ function render(s) {
   current = s;
   $('#error').style.display = s.error ? 'block' : 'none';
   $('#error').textContent = s.error ?? '';
-  $('#status').textContent = s.loading ? '取得中…'
-    : s.updatedAt ? `${s.count} 件 / ${new Date(s.updatedAt).toLocaleTimeString()}` : '';
+  $('#status').textContent = s.loading ? tr(lang, 'loading')
+    : s.updatedAt ? `${tr(lang, 'statusCount', { n: s.count })} / ${new Date(s.updatedAt).toLocaleTimeString()}` : '';
   renderTodos(s.todos, s.error);
   renderIssues(s.issues ?? [], s.error);
   drawBadge(s.count);
@@ -162,13 +165,18 @@ function drawBadge(count) {
 // ---------- 設定 ----------
 async function loadForm() {
   const c = await window.api.getConfig();
+  const next = LANGS.includes(c.lang) ? c.lang : 'ja';
+  const changed = next !== lang;
+  lang = next;
+  if (changed) { applyI18n(); render(current); }   // 言語が変わったら画面を作り直す
   const f = $('#form');
   f.baseUrl.value = c.baseUrl;
   f.intervalSec.value = c.intervalSec;
   f.notify.checked = c.notify;
   f.autoStart.checked = c.autoStart;
   f.insecure.checked = c.insecure;
-  f.token.placeholder = c.hasToken ? '保存済み（変更時のみ入力）' : 'glpat-xxxxxxxx';
+  f.elements.lang.value = lang;
+  f.token.placeholder = c.hasToken ? tr(lang, 'tokenSaved') : tr(lang, 'tokenNew');
   if (!c.baseUrl || !c.hasToken) document.querySelector('.tab[data-view=settings]').click();
 }
 
@@ -182,9 +190,10 @@ $('#form').onsubmit = async e => {
     notify: f.notify.checked,
     autoStart: f.autoStart.checked,
     insecure: f.insecure.checked,
+    lang: f.elements.lang.value,
   });
   f.token.value = '';
-  $('#saved').textContent = '保存しました';
+  $('#saved').textContent = tr(lang, 'saved');
   setTimeout(() => ($('#saved').textContent = ''), 2000);
   loadForm();
 };
@@ -192,4 +201,5 @@ $('#form').onsubmit = async e => {
 $('#refresh').onclick = () => window.api.refresh();
 window.api.onState(render);
 window.api.getState().then(render);
+applyI18n();
 loadForm();
