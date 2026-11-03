@@ -1,0 +1,42 @@
+name: Test
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: test-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  unit:
+    name: 単体テスト
+    # テスト対象は src/lib.js の純粋な計算だけなので Windows である必要はない。
+    # GUI の e2e テスト（npm run test:gui）はウィンドウを開くため、ここでは走らせない。
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: 構文チェック
+        run: |
+          shopt -s nullglob
+          for f in src/*.js scripts/*.js test/*.js; do
+            node --check "$f"
+          done
+
+      # package.json の test は glob を渡す。node --test の glob 対応は 22.5.0 以降
+      - name: npm test
+        run: npm test
