@@ -212,6 +212,40 @@ let m = null;
   // 10) preload の公開面
   const api = await evl(`Object.keys(window.api).sort().join(',')`);
   check('preload の IPC 面', api.includes('done') && api.includes('setBadge'), api);
+
+  // 11) 言語の切り替え（Issue #5）
+  const sel = `document.querySelector('select[name=lang]')`;
+  await click('.tab[data-view=settings]');
+  const options = await evl(`[...${sel}.options].map(o => o.value).join(',')`);
+  check('設定に言語の選択がある', options === 'ja,en', options);
+  check('既定は日本語', (await evl(`${sel}.value`)) === 'ja');
+
+  await evl(`${sel}.value = 'en'; document.querySelector('#form').requestSubmit();`);
+  await waitFor('英語に切り替わる', `document.querySelector('.tab[data-view=list]').textContent === 'Notifications'`, 20000);
+  const tabs = await evl(`[...document.querySelectorAll('.tab')].map(e => e.textContent).join('|')`);
+  check('タブが英語になる', tabs.startsWith('Notifications|') && tabs.endsWith('|Settings'), tabs);
+  const chipsEn = await evl(`[...document.querySelectorAll('#todoRepos .chip')].map(e => e.textContent).join('|')`);
+  check('チップが英語（All / プロジェクト名）', chipsEn.startsWith('All '), chipsEn);
+  const tagsEn = await evl(`[...document.querySelectorAll('#todos .tag')].map(e => e.textContent).join(',')`);
+  check('種別ラベルが英語', /Mentioned/.test(tagsEn) && /Assigned/.test(tagsEn) && !/メンション/.test(tagsEn), tagsEn);
+  const doneEn = await evl(`document.querySelector('#todos button').textContent`);
+  check('完了ボタンが Done', doneEn === 'Done', doneEn);
+  const statusEn = await evl(`document.querySelector('#status').textContent`);
+  check('ヘッダが英語', /\d+ to-dos/.test(statusEn), statusEn);
+  const dueEn = await evl(`[...document.querySelectorAll('#todos .due')].map(e => e.textContent).join(' | ')`);
+  check('期限表示が英語', dueEn.includes('overdue') && dueEn.includes('Milestone'), dueEn);
+  await click('.tab[data-view=settings]');
+  const saveEn = await evl(`document.querySelector('button[type=submit]').textContent`);
+  check('保存ボタンが Save', saveEn === 'Save', saveEn);
+  const hintEn = await evl(`document.querySelector('#form p.hint').textContent`);
+  check('ヒントも英語', hintEn.includes('DPAPI'), hintEn);
+  await click('.tab[data-view=list]');
+  await shot('05-english.png');
+
+  await click('.tab[data-view=settings]');
+  await evl(`${sel}.value = 'ja'; document.querySelector('#form').requestSubmit();`);
+  await waitFor('日本語に戻る', `document.querySelector('.tab[data-view=list]').textContent === '通知'`, 20000);
+  check('日本語に戻せる', true);
 })().catch(e => {
   check(`例外: ${e.message}`, false);
 }).finally(async () => {

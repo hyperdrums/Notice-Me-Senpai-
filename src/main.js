@@ -4,7 +4,7 @@ const {
 } = require('electron');
 const path = require('path');
 const fs = require('fs');
-const { CONFIG_DEFAULTS, apiUrl, mergeConfig, intervalSec, freshTodos } = require('./lib.js');
+const { CONFIG_DEFAULTS, apiUrl, mergeConfig, intervalSec, freshTodos, tr } = require('./lib.js');
 
 // 軽量化: GPU・ネットワークを別プロセスにせず、メインに統合する（素のHTMLなのでGPU不要）
 app.disableHardwareAcceleration();
@@ -71,7 +71,7 @@ async function api(p, method = 'GET') {
     headers: { 'PRIVATE-TOKEN': config.token },
   });
   if (!res.ok) {
-    const msg = res.status === 401 ? 'トークンが無効です (401)' : `HTTP ${res.status}`;
+    const msg = res.status === 401 ? tr(config.lang, 'errInvalidToken') : `HTTP ${res.status}`;
     throw new Error(msg);
   }
   return res;
@@ -79,7 +79,7 @@ async function api(p, method = 'GET') {
 
 async function poll() {
   if (!config.baseUrl || !config.token) {
-    setState({ todos: [], issues: [], count: 0, error: '未設定です。設定タブで URL とトークンを入力してください。' });
+    setState({ todos: [], issues: [], count: 0, error: tr(config.lang, 'errNotConfigured') });
     return;
   }
   setState({ loading: true });
@@ -95,7 +95,7 @@ async function poll() {
     notifyNew(todos);
     setState({ todos, issues, count, error: null, updatedAt: Date.now(), loading: false });
   } catch (e) {
-    setState({ error: `取得失敗: ${e.message}`, loading: false });
+    setState({ error: tr(config.lang, 'errFetch', { msg: e.message }), loading: false });
   }
 }
 
@@ -105,7 +105,9 @@ function notifyNew(todos) {
   if (!config.notify || fresh.length === 0 || !Notification.isSupported()) return;
   const t = fresh[0];
   const n = new Notification({
-    title: fresh.length > 1 ? `GitLab: 新着 ${fresh.length} 件` : `GitLab: ${t.author?.name ?? ''}`,
+    title: fresh.length > 1
+      ? tr(config.lang, 'notifNew', { n: fresh.length })
+      : tr(config.lang, 'notifFrom', { name: t.author?.name ?? '' }),
     body: t.target?.title ?? t.body ?? '',
   });
   n.on('click', () => (fresh.length === 1 ? openUrl(t.target_url) : showWindow()));
@@ -180,15 +182,19 @@ function createWindow() {
   });
 }
 
+function trayMenu() {
+  return Menu.buildFromTemplate([
+    { label: tr(config.lang, 'trayOpen'), click: showWindow },
+    { label: tr(config.lang, 'trayRefresh'), click: poll },
+    { type: 'separator' },
+    { label: tr(config.lang, 'trayQuit'), click: () => { quitting = true; app.quit(); } },
+  ]);
+}
+
 function createTray() {
   tray = new Tray(circleIcon(32, [226, 67, 41]));
-  tray.setToolTip('Notice Me, Senpai!');
-  tray.setContextMenu(Menu.buildFromTemplate([
-    { label: '開く', click: showWindow },
-    { label: '今すぐ更新', click: poll },
-    { type: 'separator' },
-    { label: '終了', click: () => { quitting = true; app.quit(); } },
-  ]));
+  tray.setToolTip(tr(config.lang, 'appTitle'));
+  tray.setContextMenu(trayMenu());
   tray.on('click', showWindow);
 }
 
@@ -203,6 +209,7 @@ ipcMain.handle('save-config', async (_e, c) => {
   await saveConfig();
   applyCertPolicy();
   applyAutoStart();
+  tray?.setContextMenu(trayMenu());   // 言語が変わった可能性があるのでメニューを作り直す
   knownIds = null;
   schedule();
   return true;
@@ -213,16 +220,16 @@ ipcMain.handle('done', async (_e, id) => {
   try {
     await api(`/todos/${Number(id)}/mark_as_done`, 'POST');
   } catch (e) {
-    setState({ error: `完了処理に失敗: ${e.message}` });
+    setState({ error: tr(config.lang, 'errDone', { msg: e.message }) });
   }
   await poll();
 });
 // レンダラーが canvas で描いたバッジ画像を受け取る
 ipcMain.on('badge', (_e, { overlay, trayIcon, count }) => {
   if (!win) return;
-  win.setOverlayIcon(count > 0 ? nativeImage.createFromDataURL(overlay) : null, `${count} 件`);
+  win.setOverlayIcon(count > 0 ? nativeImage.createFromDataURL(overlay) : null, tr(config.lang, 'statusCount', { n: count }));
   if (tray && trayIcon) tray.setImage(nativeImage.createFromDataURL(trayIcon));
-  tray?.setToolTip(`NMS - 未読 ${count} 件`);
+  tray?.setToolTip(tr(config.lang, 'trayTooltip', { n: count }));
 });
 
 // ---------- 起動 ----------

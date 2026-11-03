@@ -35,19 +35,19 @@
   form { padding: 12px; display: grid; gap: 10px; }
   label { display: grid; gap: 4px; }
   label.check { display: flex; gap: 6px; align-items: center; }
-  input[type=text], input[type=password], input[type=number] { font: inherit; padding: 5px; }
+  input[type=text], input[type=password], input[type=number], select { font: inherit; padding: 5px; }
   .hint { color: var(--muted); font-size: 12px; }
   .hidden { display: none !important; }
 </style>
 </head>
 <body>
 <header>
-  <span class="tab active" data-view="list">通知</span>
+  <span class="tab active" data-view="list" data-i18n="tabList">通知</span>
   <span class="tab" data-view="due" id="dueTab">期限</span>
-  <span class="tab" data-view="settings">設定</span>
+  <span class="tab" data-view="settings" data-i18n="tabSettings">設定</span>
   <span class="spacer"></span>
   <span id="status"></span>
-  <button id="refresh">更新</button>
+  <button id="refresh" data-i18n="refresh">更新</button>
 </header>
 <div id="error"></div>
 
@@ -64,20 +64,26 @@
 
 <section id="settings" class="hidden">
   <form id="form">
-    <label>GitLab URL
+    <label><span data-i18n="lblBaseUrl">GitLab URL</span>
       <input type="text" name="baseUrl" placeholder="https://gitlab.example.local">
     </label>
-    <label>Personal Access Token（スコープ: read_api。完了操作もするなら api）
+    <label><span data-i18n="lblToken">Personal Access Token（スコープ: read_api。完了操作もするなら api）</span>
       <input type="password" name="token" placeholder="保存済みの場合は空欄で維持">
     </label>
-    <label>取得間隔（秒, 最小15）
+    <label><span data-i18n="lblInterval">取得間隔（秒, 最小15）</span>
       <input type="number" name="intervalSec" min="15" step="5">
     </label>
-    <label class="check"><input type="checkbox" name="notify"> 新着時にデスクトップ通知</label>
-    <label class="check"><input type="checkbox" name="autoStart"> Windows ログイン時に起動（最小化）</label>
-    <label class="check"><input type="checkbox" name="insecure"> 証明書エラーを無視（自己署名証明書のオンプレ用）</label>
-    <div><button type="submit">保存</button> <span id="saved" class="hint"></span></div>
-    <p class="hint">トークンは Windows の DPAPI で暗号化して保存されます。</p>
+    <label class="check"><span data-i18n="lblLang">表示言語</span>
+      <select name="lang">
+        <option value="ja">日本語</option>
+        <option value="en">English</option>
+      </select>
+    </label>
+    <label class="check"><input type="checkbox" name="notify"><span data-i18n="chkNotify">新着時にデスクトップ通知</span></label>
+    <label class="check"><input type="checkbox" name="autoStart"><span data-i18n="chkAutoStart">Windows ログイン時に起動（最小化）</span></label>
+    <label class="check"><input type="checkbox" name="insecure"><span data-i18n="chkInsecure">証明書エラーを無視（自己署名証明書のオンプレ用）</span></label>
+    <div><button type="submit" data-i18n="btnSave">保存</button> <span id="saved" class="hint"></span></div>
+    <p class="hint" data-i18n="hintToken">トークンは Windows の DPAPI で暗号化して保存されます。</p>
   </form>
 </section>
 
