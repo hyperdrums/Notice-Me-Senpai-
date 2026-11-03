@@ -207,3 +207,30 @@ test('言語のラベルはどちらの言語でも探せる', () => {
   assert.ok(tr('ja', 'lblLang').includes('Language'), tr('ja', 'lblLang'));
   assert.ok(tr('en', 'lblLang').includes('表示言語'), tr('en', 'lblLang'));
 });
+
+// ---------- README ----------
+// GitHub のアンカー生成（小文字化 → 記号除去 → 空白ごとにハイフン）を再現する。
+// github-slugger は空白を 1 つずつハイフンに置き換えるので、連続空白を潰さないこと。
+const slug = (s) =>
+  s.trim().toLowerCase().replace(/[^\p{L}\p{N} ]/gu, '').replace(/ /g, '-');
+
+test('README の目次は全て実際の見出しに解決できる', () => {
+  const md = fs.readFileSync(path.join(__dirname, '..', 'README.md'), 'utf8');
+  const headings = new Set(
+    [...md.matchAll(/^#{1,6}\s+(.+)$/gm)].map((m) => slug(m[1]))
+  );
+  const toc = md.slice(md.indexOf('## 目次'), md.indexOf('## できること'));
+  const links = [...toc.matchAll(/\]\(#([^)]+)\)/g)].map((m) => m[1]);
+  assert.ok(links.length >= 5, `目次にリンクが無い (${links.length})`);
+  for (const l of links) assert.ok(headings.has(l), `対応する見出しが無い: #${l}`);
+});
+
+test('README の内部リンクが存在する見出しを指している', () => {
+  const md = fs.readFileSync(path.join(__dirname, '..', 'README.md'), 'utf8');
+  const headings = new Set(
+    [...md.matchAll(/^#{1,6}\s+(.+)$/gm)].map((m) => slug(m[1]))
+  );
+  for (const m of md.matchAll(/\]\(#([^)]+)\)/g)) {
+    assert.ok(headings.has(m[1]), `存在しない見出し: #${m[1]}`);
+  }
+});
