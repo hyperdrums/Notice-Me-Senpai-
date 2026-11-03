@@ -88,6 +88,34 @@ npm start
 - npm の allow-scripts 設定によっては、`npm install` で Electron 本体がダウンロードされません。その場合は 2 行目を実行してください。
 - VS Code のターミナルでは環境変数 `ELECTRON_RUN_AS_NODE` が設定されていることがあります。残っていると Electron が素の Node として動くため、消してから起動してください。
 
+### テスト
+
+```
+npm test          # node --test（追加の依存ライブラリは使いません）
+```
+
+`src/lib.js` に「引数だけ結果が決まる純粋な関数」を集めて、`test/lib.test.js` で検証しています。
+Electron の API や `document` を触るコードはここでテストできないので、`lib.js` に出すかどうかの目安にしてください。
+`lib.js` は `main.js` から `require()`、`renderer.js` からは `<script>` で読むため、**読み込みは 1 回だけ**にしてください（2 回読むと宣言の重複でエラーになります）。
+
+### GUI のテスト（モック GitLab）
+
+```
+npm run test:gui    # アプリを実起動して画面を検証（スクショは dist/gui-test/ に出ます）
+npm run mock        # モック GitLab だけ起動（http://127.0.0.1:8080 / glpat-mock-token）
+```
+
+本物の GitLab の代わりに `scripts/mock-gitlab.js` が API のふりをします。通知 4 件とアサイン Issue が入っていて、
+期限切れ（赤）・3日以内（橙）・マイルストーン期限まで再現するので、トークンを本物に切り替えずに画面を確認できます。
+
+- `scripts/gui-test.js` が、Chrome DevTools Protocol（依存ゼロの自作クライアント）で画面を読み、
+  件数・色分け・絞り込み・「完了」ボタン・新着のポーリングを 20 項目チェックします
+- `scripts/mock-config.js` が、テスト用の設定を本番と同じ DPAPI 暗号化で書き込みます
+- 手動で見るだけなら `npm run mock` を別に起動して、設定に URL とトークンを入れるだけ。
+  `curl -X POST http://127.0.0.1:8080/__push` で新着通知も再現できます
+
+実行中はウィンドウが実際に映ります。`test:gui` は新着も送るので、最後にデスクトップ通知が出ます。
+
 ### ビルド
 
 ```
@@ -113,6 +141,7 @@ Electron 製です。画面は素の HTML/JS で、フレームワークは使�
 | ファイル | 役割 |
 |---|---|
 | `src/main.js` | ポーリング、GitLab API の呼び出し、タスクバーのバッジとトレイ、設定の保存 |
+| `src/lib.js` | 純粋な計算だけ（URL 組み立て、設定のマージ、期限の色分け）。`npm test` で検証する |
 | `src/preload.js` | 画面側に公開する IPC |
 | `src/index.html` / `src/renderer.js` | 一覧・期限・設定の画面、バッジ画像の描画 |
 | `scripts/make-icon.js` | アイコンの生成（外部ライブラリなし） |

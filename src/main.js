@@ -4,6 +4,7 @@ const {
 } = require('electron');
 const path = require('path');
 const fs = require('fs');
+const { CONFIG_DEFAULTS, apiUrl, mergeConfig, intervalSec, freshTodos } = require('./lib.js');
 
 // 軽量化: GPU・ネットワークを別プロセスにせず、メインに統合する（素のHTMLなのでGPU不要）
 app.disableHardwareAcceleration();
@@ -14,7 +15,7 @@ app.setAppUserModelId('io.github.hyperdrums.notice-me-senpai');
 
 if (!app.requestSingleInstanceLock()) app.quit();
 
-const DEFAULTS = { baseUrl: '', intervalSec: 60, notify: true, insecure: false, autoStart: false };
+const DEFAULTS = { ...CONFIG_DEFAULTS, token: '' };
 const configPath = () => path.join(app.getPath('userData'), 'config.json');
 
 let win = null;
@@ -65,8 +66,7 @@ function applyAutoStart() {
 
 // ---------- GitLab API ----------
 async function api(p, method = 'GET') {
-  const base = config.baseUrl.replace(/\/+$/, '');
-  const res = await net.fetch(`${base}/api/v4${p}`, {
+  const res = await net.fetch(apiUrl(config.baseUrl, p), {
     method,
     headers: { 'PRIVATE-TOKEN': config.token },
   });
@@ -100,9 +100,8 @@ async function poll() {
 }
 
 function notifyNew(todos) {
-  const ids = new Set(todos.map(t => t.id));
-  const fresh = knownIds ? todos.filter(t => !knownIds.has(t.id)) : [];
-  knownIds = ids;
+  const fresh = freshTodos(knownIds, todos);
+  knownIds = new Set(todos.map(t => t.id));
   if (!config.notify || fresh.length === 0 || !Notification.isSupported()) return;
   const t = fresh[0];
   const n = new Notification({
@@ -120,8 +119,7 @@ function setState(patch) {
 
 function schedule() {
   clearInterval(timer);
-  const sec = Math.max(15, Number(config.intervalSec) || DEFAULTS.intervalSec);
-  timer = setInterval(poll, sec * 1000);
+  timer = setInterval(poll, intervalSec(config.intervalSec) * 1000);
   poll();
 }
 
@@ -201,16 +199,7 @@ ipcMain.handle('get-config', () => {
   return { ...rest, hasToken: !!token };
 });
 ipcMain.handle('save-config', async (_e, c) => {
-  config = {
-    ...config,
-    baseUrl: String(c.baseUrl || '').trim(),
-    intervalSec: Number(c.intervalSec) || DEFAULTS.intervalSec,
-    notify: !!c.notify,
-    insecure: !!c.insecure,
-    autoStart: !!c.autoStart,
-    // 空欄なら既存トークンを維持
-    token: c.token ? String(c.token).trim() : config.token,
-  };
+  config = mergeConfig(config, c);
   await saveConfig();
   applyCertPolicy();
   applyAutoStart();

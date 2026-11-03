@@ -29,37 +29,13 @@ document.querySelectorAll('.tab').forEach(tab => {
 });
 
 // ---------- 共通 ----------
-function ago(iso) {
-  const m = Math.floor((Date.now() - new Date(iso)) / 60000);
-  if (m < 1) return 'たった今';
-  if (m < 60) return `${m}分前`;
-  if (m < 1440) return `${Math.floor(m / 60)}時間前`;
-  return `${Math.floor(m / 1440)}日前`;
-}
-
+// ago / dueInfo / todoRepo / issueRepo / shortName は lib.js にある（Node でテストできる）
 function el(tag, cls, text) {
   const e = document.createElement(tag);
   if (cls) e.className = cls;
   if (text != null) e.textContent = text;
   return e;
 }
-
-// 'YYYY-MM-DD' → 表示文字列と色クラス（超過: 赤 / 3日以内: 橙）
-function dueInfo(date, prefix = '期限') {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const d = new Date(`${date}T00:00:00`);
-  const days = Math.round((d - today) / 86400000);
-  const rest = days < 0 ? `${-days}日超過` : days === 0 ? '今日まで' : `あと${days}日`;
-  return {
-    text: `${prefix} ${d.getMonth() + 1}/${d.getDate()} (${rest})`,
-    cls: `due${days < 0 ? ' over' : days <= 3 ? ' soon' : ''}`,
-  };
-}
-
-const todoRepo = t => t.project?.path_with_namespace ?? t.group?.full_path ?? '(なし)';
-const issueRepo = i => i.references?.full?.replace(/[#!]\d+$/, '') ?? String(i.project_id);
-const shortName = p => p.split('/').pop();
 
 // 選択肢を並べ、クリックで filter[key] を切り替える。消えた選択肢は 'all' に戻す
 function renderChips(container, key, entries, labelOf = v => v, titleOf = () => '') {
