@@ -18,6 +18,7 @@ app.whenReady().then(async () => {
   fs.writeFileSync(out, JSON.stringify({
     baseUrl: arg('mock-url'),
     intervalSec: 15,        // テストを速く進めるため最小値
+    lang: 'ja',             // OS の言語に依存せずテストを決定的にする
     notify: true,
     insecure: false,
     autoStart: false,       // ログイン時起動には触らない

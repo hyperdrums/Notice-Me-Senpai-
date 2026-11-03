@@ -218,6 +218,10 @@ let m = null;
   await click('.tab[data-view=settings]');
   const options = await evl(`[...${sel}.options].map(o => o.value).join(',')`);
   check('設定に言語の選択がある', options === 'ja,en', options);
+  const optTexts = await evl(`[...${sel}.options].map(o => o.text).join('|')`);
+  check('選択肢がどちらの言語でも読める', optTexts === '日本語 (Japanese)|English (英語)', optTexts);
+  const langLabel = await evl(`document.querySelector('[data-i18n=lblLang]').textContent`);
+  check('ラベルが日英併記で見つけられる', langLabel.includes('Language') && langLabel.includes('表示言語'), langLabel);
   check('既定は日本語', (await evl(`${sel}.value`)) === 'ja');
 
   await evl(`${sel}.value = 'en'; document.querySelector('#form').requestSubmit();`);

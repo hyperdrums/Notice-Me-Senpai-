@@ -26,17 +26,21 @@ let config = { ...DEFAULTS, token: '' };
 let knownIds = null; // 初回取得ではデスクトップ通知を出さない
 let state = { todos: [], issues: [], count: 0, error: null, updatedAt: null, loading: false };
 
+// 初回起動（設定が無いとき）だけ OS の言語を見る。ja 以外なら英語で出す
+const guessLang = () => (String(app.getLocale() || '').toLowerCase().startsWith('ja') ? 'ja' : 'en');
+
 // ---------- 設定（トークンは DPAPI で暗号化して保存） ----------
 async function loadConfig() {
+  const fresh = { ...DEFAULTS, token: '', lang: guessLang() };
   try {
     const raw = JSON.parse(fs.readFileSync(configPath(), 'utf8'));
     const token = raw.tokenEnc
       ? (await safeStorage.decryptStringAsync(Buffer.from(raw.tokenEnc, 'base64'))).result
       : '';
     delete raw.tokenEnc;
-    config = { ...DEFAULTS, ...raw, token };
+    config = { ...fresh, ...raw, token };
   } catch {
-    config = { ...DEFAULTS, token: '' };
+    config = fresh;
   }
 }
 

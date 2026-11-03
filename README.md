@@ -55,7 +55,7 @@ NMS は、GitLab の To-Do を Windows のタスクバーに件数バッジで�
 | GitLab URL | 例: `https://gitlab.com`、`https://gitlab.example.com` |
 | Personal Access Token | 手順 2 でコピーした `glpat-...` |
 | 取得間隔 | 既定は 60 秒（最小 15 秒） |
-| 表示言語 | 日本語 / English。アプリの文言だけ切り替わります（GitLab からの本文はそのまま） |
+| 表示言語 | 初回は OS の言語で自動決定します（日本語以外なら English）。切り替わるのはアプリの文言だけで、GitLab からの本文はそのままです |
 
 「保存」を押すと取得が始まります。
 

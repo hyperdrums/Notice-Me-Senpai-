@@ -1,5 +1,7 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
 const {
   LANGS, CONFIG_DEFAULTS, TYPES, UI, ACTIONS, tr, actionLabel,
   apiUrl, mergeConfig, intervalSec, freshTodos, todoRepo, issueRepo, shortName, dueInfo, ago,
@@ -192,4 +194,16 @@ test('翻訳: 空文字の訳がない', () => {
 test('TYPES: target_type の略称', () => {
   assert.equal(TYPES.MergeRequest, 'MR');
   assert.equal(TYPES.Issue, 'Issue');
+});
+
+// ---------- 言語設定が見つけられるか ----------
+test('言語セレクトは日英どちらの表記も持つ', () => {
+  const html = fs.readFileSync(path.join(__dirname, '..', 'src', 'index.html'), 'utf8');
+  assert.match(html, /<option value="ja">日本語 \(Japanese\)<\/option>/);
+  assert.match(html, /<option value="en">English \(英語\)<\/option>/);
+});
+
+test('言語のラベルはどちらの言語でも探せる', () => {
+  assert.ok(tr('ja', 'lblLang').includes('Language'), tr('ja', 'lblLang'));
+  assert.ok(tr('en', 'lblLang').includes('表示言語'), tr('en', 'lblLang'));
 });
