@@ -1,6 +1,6 @@
 {
   "name": "notice-me-senpai",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Notice Me, Senpai! (NMS) - GitLab の To-Do を Windows タスクバーの件数バッジで通知する",
   "author": "hyperdrums",
   "license": "MIT",
