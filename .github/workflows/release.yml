@@ -33,8 +33,41 @@ jobs:
       - name: Build portable exe
         run: npx electron-builder --win portable --publish never
 
+      - name: Compute SHA-256 checksums
+        shell: bash
+        run: |
+          cd dist
+          sha256sum NMS-*.exe > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+
       - name: Create GitHub Release
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "$GITHUB_REF_NAME" dist/NMS-*.exe --title "$GITHUB_REF_NAME" --generate-notes
+        run: |
+          gh release create "$GITHUB_REF_NAME" dist/NMS-*.exe dist/SHA256SUMS.txt \
+            --title "$GITHUB_REF_NAME" --generate-notes
+
+      - name: Append checksums to the release notes
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view "$GITHUB_REF_NAME" --json body --jq .body > notes.md
+          {
+            echo ""
+            echo "## SHA-256"
+            echo ""
+            echo 'コード署名はしていません。ダウンロードしたファイルが公式のままか確認できます。'
+            echo ""
+            echo '```powershell'
+            echo "Get-FileHash .\\NMS-${GITHUB_REF_NAME#v}.exe -Algorithm SHA256"
+            echo '```'
+            echo ""
+            echo '期待する Hash:'
+            echo ""
+            echo '```'
+            sed 's/ \*/  /' dist/SHA256SUMS.txt
+            echo '```'
+          } >> notes.md
+          gh release edit "$GITHUB_REF_NAME" --notes-file notes.md
