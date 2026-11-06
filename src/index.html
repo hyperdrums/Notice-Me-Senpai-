@@ -24,6 +24,8 @@
   button { font: inherit; padding: 3px 10px; cursor: pointer; }
   li button { align-self: center; }
   .empty { padding: 24px; text-align: center; color: var(--muted); }
+  li.separator { padding: 4px 10px; color: var(--muted); font-size: 12px; font-weight: 600; background: #8881; cursor: default; }
+  #assignedLimit { padding: 4px 10px; border-bottom: 1px solid var(--line); }
   .bar { display: flex; flex-wrap: wrap; gap: 4px; padding: 6px 10px; border-bottom: 1px solid var(--line); }
   .bar:empty { display: none; }
   .chip { cursor: pointer; padding: 1px 8px; border: 1px solid var(--line); border-radius: 10px; font-size: 12px; white-space: nowrap; }
@@ -42,8 +44,8 @@
 </head>
 <body>
 <header>
-  <span class="tab active" data-view="list" data-i18n="tabList">通知</span>
-  <span class="tab" data-view="due" id="dueTab">期限</span>
+  <span class="tab active" data-view="list" data-i18n="tabList">To-Do</span>
+  <span class="tab" data-view="assigned" id="assignedTab">作業アイテム</span>
   <span class="tab" data-view="settings" data-i18n="tabSettings">設定</span>
   <span class="spacer"></span>
   <span id="status"></span>
@@ -57,9 +59,11 @@
   <ul id="todos"></ul>
 </section>
 
-<section id="due" class="hidden">
-  <div class="bar repos" id="dueRepos"></div>
-  <ul id="issues"></ul>
+<section id="assigned" class="hidden">
+  <div class="bar repos" id="assignedRepos"></div>
+  <div class="bar" id="assignedTypes"></div>
+  <div class="hint hidden" id="assignedLimit"></div>
+  <ul id="assignedItems"></ul>
 </section>
 
 <section id="settings" class="hidden">

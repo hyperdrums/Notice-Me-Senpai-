@@ -4,6 +4,10 @@
 //   テストから:  const mock = require('./mock-gitlab.js'); await mock.start()
 //
 // /api/v4 以外はテスト用の制御口（__ で始まる）
+//   /__fail?target=todos|issues&status=500  その API を失敗させる（status=0 で解除）
+//   /__assigned-total?n=150                 /issues の x-total を上書きする（n=none で省く、n なしで解除）
+//   /__assigned-count?n=150                 /issues の件数を期限なしで水増しする（n なしで解除）
+//   /__hang-issues?on=1                     /issues に応答しない（on=0 で解除し、止めていた分にも応答する）
 
 const http = require('node:http');
 
@@ -41,14 +45,15 @@ function makeIssue(o) {
     project_id: 1,
     title: '',
     state: 'opened',
+    issue_type: 'issue',
     labels: [],
     references: { full: 'group/proj-a#100' },
-    web_url: 'http://127.0.0.1/group/proj-a/-/issues/100',
+    web_url: `http://127.0.0.1/group/proj-a/-/issues/${o.iid ?? 100}`,
     ...o,
   };
 }
 
-// 初期データ: 期限切れ / 今日 / 4 日以降 / 期限なし（除外される）を混ぜる
+// 初期データ: 期限切れ / 今日 / 4 日以降 / 期限なしを混ぜる
 function initialTodos(base) {
   return [
     makeTodo({
@@ -76,7 +81,7 @@ function initialTodos(base) {
       created_at: iso(1500),
     }),
     makeTodo({
-      id: 104, action_name: 'assigned', target_type: 'Issue',
+      id: 104, action_name: 'assigned', target_type: 'WorkItem',
       target: { iid: 21, title: 'リリース手順の整理', due_date: null, milestone: { due_date: day(2) } },
       project: { id: 2, name_with_namespace: 'Other / Proj B', path_with_namespace: 'other/proj-b' },
       target_url: `${base}/other/proj-b/-/issues/21`,
@@ -85,18 +90,27 @@ function initialTodos(base) {
   ];
 }
 
-function initialIssues() {
-  return [
-    makeIssue({ iid: 17, title: 'タスクバーのバッジが二重に表示される', due_date: day(-2), labels: ['bug'] }),
-    makeIssue({ iid: 22, title: '設定画面のトークン欄にプレースホルダ', due_date: day(1), references: { full: 'group/proj-a#22' } }),
-    makeIssue({ iid: 23, title: 'README にスクリーンショットを載せる', due_date: day(14), references: { full: 'other/proj-b#23' } }),
-    makeIssue({ iid: 24, title: '期限なしの Issue は期限タブに出ない', due_date: null }),
+// GitLab と同じく期限が近い順、期限なしは末尾。#17 は issue_type の無い応答を再現する
+function initialIssues(count = 0) {
+  const issues = [
+    makeIssue({ id: 217, iid: 17, title: 'タスクバーのバッジが二重に表示される', due_date: day(-2), labels: ['bug'], issue_type: undefined, references: { full: 'group/proj-a#17' } }),
+    makeIssue({ id: 222, iid: 22, title: '設定画面のトークン欄にプレースホルダ', due_date: day(1), references: { full: 'group/proj-a#22' } }),
+    makeIssue({ id: 225, iid: 25, title: '確認手順を書き出す', issue_type: 'task', due_date: day(3), references: { full: 'group/proj-a#25' } }),
+    makeIssue({ id: 223, iid: 23, title: 'README にスクリーンショットを載せる', due_date: day(14), references: { full: 'other/proj-b#23' } }),
+    makeIssue({ id: 224, iid: 24, title: '期限なしの Issue', due_date: null, references: { full: 'group/proj-a#24' } }),
+    makeIssue({ id: 226, iid: 26, title: '期限なしのタスク', issue_type: 'task', due_date: null, references: { full: 'other/proj-b#26' } }),
+    makeIssue({ id: 227, iid: 27, title: '期限なしのインシデント', issue_type: 'incident', due_date: null, references: { full: 'other/proj-c#27' } }),
   ];
+  for (let iid = 1000; issues.length < count; iid++) issues.push(makeIssue({ id: iid, iid, title: `水増し ${iid}`, due_date: null }));
+  return issues;
 }
+
+const initialState = () => ({ issues: initialIssues(), done: [], pushed: 0, fail: { todos: 0, issues: 0 }, assignedTotal: null, hangIssues: false, issuesQuery: null });
 
 async function start({ port = 0, quiet = false } = {}) {
   const log = (...a) => { if (!quiet) console.log(...a); };
-  const state = { todos: null, issues: initialIssues(), done: [], pushed: 0 };
+  const state = { todos: null, ...initialState() };
+  const held = []; // __hang-issues で止めている /issues の応答
 
   const server = http.createServer((req, res) => {
     const url = new URL(req.url, 'http://127.0.0.1');
@@ -113,7 +127,26 @@ async function start({ port = 0, quiet = false } = {}) {
     // ---- テスト用の制御口 ----
     if (p === '/__health') return send(200, { ok: true });
     if (p === '/__state') return send(200, state);
-    if (p === '/__reset') { state.todos = initialTodos(base); state.done = []; state.pushed = 0; return send(200, state); }
+    if (p === '/__reset') { Object.assign(state, initialState(), { todos: initialTodos(base) }); return send(200, state); }
+    if (p === '/__fail') {
+      const target = url.searchParams.get('target');
+      if (!(target in state.fail)) return send(400, { message: `mock: unknown target ${target}` });
+      state.fail[target] = Number(url.searchParams.get('status')) || 0;
+      return send(200, state.fail);
+    }
+    if (p === '/__assigned-total') {
+      state.assignedTotal = url.searchParams.get('n');
+      return send(200, { assignedTotal: state.assignedTotal });
+    }
+    if (p === '/__assigned-count') {
+      state.issues = initialIssues(Number(url.searchParams.get('n')) || 0);
+      return send(200, { count: state.issues.length });
+    }
+    if (p === '/__hang-issues') {
+      state.hangIssues = url.searchParams.get('on') === '1';
+      if (!state.hangIssues) held.splice(0).forEach(respond => respond());
+      return send(200, { hangIssues: state.hangIssues });
+    }
     if (p === '/__push') {
       state.pushed++;
       const t = makeTodo({
@@ -130,11 +163,22 @@ async function start({ port = 0, quiet = false } = {}) {
     // ---- GitLab API のふり ----
     if (req.headers['private-token'] !== TOKEN) return send(401, { message: '401 Unauthorized' });
 
+    if (p === '/api/v4/todos' && state.fail.todos) return send(state.fail.todos, { message: 'mock failure' });
+    if (p === '/api/v4/issues' && state.fail.issues) return send(state.fail.issues, { message: 'mock failure' });
+
     if (p === '/api/v4/todos') {
       return send(200, state.todos, { 'x-total': String(state.todos.length) });
     }
     if (p === '/api/v4/issues') {
-      return send(200, state.issues);
+      state.issuesQuery = Object.fromEntries(url.searchParams);
+      // GitLab と同じく per_page で切る（既定 20）。x-total は切る前の総数
+      const respond = () => {
+        const total = state.assignedTotal ?? String(state.issues.length);
+        const rows = state.issues.slice(0, Number(url.searchParams.get('per_page')) || 20);
+        send(200, rows, total === 'none' ? {} : { 'x-total': total });
+      };
+      if (state.hangIssues) { held.push(respond); return; }
+      return respond();
     }
     const done = p.match(/^\/api\/v4\/todos\/(\d+)\/mark_as_done$/);
     if (done && req.method === 'POST') {
@@ -156,7 +200,11 @@ async function start({ port = 0, quiet = false } = {}) {
     url, token: TOKEN, server, state,
     push: () => fetch(`${url}/__push`).then(r => r.json()),
     snapshot: () => fetch(`${url}/__state`).then(r => r.json()),
-    close: () => new Promise(r => server.close(r)),
+    fail: (target, status) => fetch(`${url}/__fail?target=${target}&status=${status}`).then(r => r.json()),
+    setAssignedTotal: n => fetch(`${url}/__assigned-total${n == null ? '' : `?n=${n}`}`).then(r => r.json()),
+    setAssignedCount: n => fetch(`${url}/__assigned-count${n == null ? '' : `?n=${n}`}`).then(r => r.json()),
+    hangIssues: on => fetch(`${url}/__hang-issues?on=${on ? 1 : 0}`).then(r => r.json()),
+    close: () => new Promise(r => { server.close(r); server.closeAllConnections(); }),
   };
 }
 

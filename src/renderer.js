@@ -1,13 +1,13 @@
 const $ = s => document.querySelector(s);
 
-// ago / dueInfo / todoRepo / issueRepo / shortName / tr / actionLabel は lib.js にある（Node でテストできる）
+// ago / dueInfo / todoRepo / issueRepo / shortName / tr / actionLabel などは lib.js にある（Node でテストできる）
 let lang = 'ja';
-let current = { todos: [], issues: [], count: 0 };
+let current = { todos: [], assigned: [], count: 0 };
 // 選択中のフィルタ（'all' = すべて）
-const filter = { action: 'all', todoRepo: 'all', dueRepo: 'all' };
+const filter = { action: 'all', todoRepo: 'all', assignedRepo: 'all', assignedType: 'all' };
 
 // ---------- タブ ----------
-const VIEWS = ['list', 'due', 'settings'];
+const VIEWS = ['list', 'assigned', 'settings'];
 document.querySelectorAll('.tab').forEach(tab => {
   tab.onclick = () => {
     document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t === tab));
@@ -52,7 +52,7 @@ function countBy(items, keyOf) {
   return m;
 }
 
-// ---------- 通知タブ ----------
+// ---------- To-Do タブ ----------
 function renderTodos(todos, error) {
   renderChips($('#todoRepos'), 'todoRepo', countBy(todos, t => todoRepo(t, lang)), shortName, p => p);
   const inRepo = todos.filter(t => filter.todoRepo === 'all' || todoRepo(t, lang) === filter.todoRepo);
@@ -68,8 +68,8 @@ function renderTodos(todos, error) {
     const main = el('div', 'main');
     const title = el('div', 'title');
     title.append(el('span', 'tag', actionOf(t)));
-    const ref = t.target?.iid != null ? ` ${t.target_type === 'MergeRequest' ? '!' : '#'}${t.target.iid}` : '';
-    title.append(`${TYPES[t.target_type] ?? t.target_type}${ref} ${t.target?.title ?? ''}`);
+    const ref = todoRef(t);
+    title.append(`${TYPES[t.target_type] ?? t.target_type}${ref ? ` ${ref}` : ''} ${t.target?.title ?? ''}`);
     const meta = el('div', 'meta');
     // アサインは期限を表示（Issue の期限、なければマイルストーンの期限）
     if (t.action_name === 'assigned') {
@@ -95,41 +95,52 @@ function dueInfoOr(t, lang) {
   return null;
 }
 
-// ---------- 期限タブ ----------
-function renderIssues(issues, error) {
-  renderChips($('#dueRepos'), 'dueRepo', countBy(issues, issueRepo), shortName, p => p);
-  const shown = issues.filter(i => filter.dueRepo === 'all' || issueRepo(i) === filter.dueRepo);
-  const over = issues.filter(i => dueInfo(i.due_date, { lang }).cls.includes('over')).length;
-  $('#dueTab').textContent = issues.length
-    ? (over ? tr(lang, 'dueTabOver', { n: issues.length, m: over }) : tr(lang, 'dueTab', { n: issues.length }))
-    : tr(lang, 'tabDue');
-
-  const ul = $('#issues');
-  ul.replaceChildren();
-  if (!shown.length && !error) ul.append(el('li', 'empty', tr(lang, 'emptyIssues')));
-  for (const i of shown) {
-    const li = el('li');
-    const main = el('div', 'main');
+// ---------- 作業アイテムタブ ----------
+function assignedRow(i) {
+  const li = el('li');
+  const main = el('div', 'main');
+  const title = el('div', 'title');
+  title.append(el('span', 'tag', workItemTypeLabel(lang, workItemType(i))), `#${i.iid} ${i.title}`);
+  const meta = el('div', 'meta');
+  if (i.due_date) {
     const due = dueInfo(i.due_date, { lang });
-    main.append(
-      el('div', 'title', `#${i.iid} ${i.title}`),
-      el('div', 'meta'),
-    );
-    main.lastChild.append(el('span', due.cls, due.text), ` · ${issueRepo(i)}${i.labels?.length ? ` · ${i.labels.join(', ')}` : ''}`);
-    li.append(main);
-    li.onclick = () => window.api.open(i.web_url);
-    ul.append(li);
+    meta.append(el('span', due.cls, due.text), ' · ');
   }
+  meta.append(`${issueRepo(i)}${i.labels?.length ? ` · ${i.labels.join(', ')}` : ''}`);
+  main.append(title, meta);
+  li.append(main);
+  li.onclick = () => window.api.open(i.web_url);
+  return li;
+}
+
+function renderAssigned(items, limited, total, error) {
+  renderChips($('#assignedRepos'), 'assignedRepo', countBy(items, issueRepo), shortName, p => p);
+  const inRepo = items.filter(i => filter.assignedRepo === 'all' || issueRepo(i) === filter.assignedRepo);
+  // 種別が 1 つ以下なら選ぶ意味がないので行ごと隠す（空の Map を渡すと選択も 'all' に戻る）
+  const types = countBy(inRepo, workItemType);
+  renderChips($('#assignedTypes'), 'assignedType', types.size >= 2 ? types : new Map(), v => workItemTypeLabel(lang, v));
+  const shown = inRepo.filter(i => filter.assignedType === 'all' || workItemType(i) === filter.assignedType);
+  $('#assignedTab').textContent = assignedTabLabel(items, { lang, total });
+  $('#assignedLimit').classList.toggle('hidden', !limited);
+  $('#assignedLimit').textContent = tr(lang, 'assignedLimit', { n: ASSIGNED_LIMIT });
+
+  const ul = $('#assignedItems');
+  ul.replaceChildren();
+  if (!shown.length && !error) ul.append(el('li', 'empty', tr(lang, 'emptyAssigned')));
+  const { dated, undated } = splitByDue(shown);
+  ul.append(...dated.map(assignedRow));
+  if (undated.length) ul.append(el('li', 'separator', tr(lang, 'noDueDate')), ...undated.map(assignedRow));
 }
 
 function render(s) {
   current = s;
-  $('#error').style.display = s.error ? 'block' : 'none';
-  $('#error').textContent = s.error ?? '';
+  const message = [s.error, s.assignedError].filter(Boolean).join(' / ');
+  $('#error').style.display = message ? 'block' : 'none';
+  $('#error').textContent = message;
   $('#status').textContent = s.loading ? tr(lang, 'loading')
     : s.updatedAt ? `${tr(lang, 'statusCount', { n: s.count })} / ${new Date(s.updatedAt).toLocaleTimeString()}` : '';
   renderTodos(s.todos, s.error);
-  renderIssues(s.issues ?? [], s.error);
+  renderAssigned(s.assigned ?? [], s.assignedLimited, s.assignedTotal, s.error || s.assignedError);
   drawBadge(s.count);
 }
 
