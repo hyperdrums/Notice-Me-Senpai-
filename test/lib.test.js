@@ -196,6 +196,14 @@ test('assignedTabLabel: 合計と、あれば超過数', () => {
   assert.equal(assignedTabLabel([{}], { today: TODAY }), '担当 1');
 });
 
+test('assignedTabLabel: total があれば取得できた行数より優先する', () => {
+  const over = [{ due_date: '2026-11-01' }, {}];
+  assert.equal(assignedTabLabel(over, { today: TODAY, total: 150 }), '担当 150 (超過1)');
+  assert.equal(assignedTabLabel(over, { today: TODAY, total: 150, lang: 'en' }), 'Assigned 150 (1 overdue)');
+  assert.equal(assignedTabLabel([{}], { today: TODAY, total: 150 }), '担当 150');
+  assert.equal(assignedTabLabel(over, { today: TODAY, total: null }), '担当 2 (超過1)');
+});
+
 test('assignedTabLabel: 0 件ならタブ名だけ', () => {
   assert.equal(assignedTabLabel([]), '担当');
   assert.equal(assignedTabLabel([], { lang: 'en' }), 'Assigned');
@@ -220,10 +228,17 @@ test('assignedPatch: 成功なら一覧を差し替えてエラーを消す', ()
   const items = [{ id: 1 }];
   assert.deepEqual(
     assignedPatch({ status: 'fulfilled', value: { items, xTotal: '1' } }),
-    { assigned: items, assignedLimited: false, assignedError: null },
+    { assigned: items, assignedLimited: false, assignedTotal: 1, assignedError: null },
   );
   const full = Array.from({ length: 100 }, (_, id) => ({ id }));
   assert.equal(assignedPatch({ status: 'fulfilled', value: { items: full, xTotal: '150' } }).assignedLimited, true);
+});
+
+test('assignedPatch: 総数は x-total、無ければ返ってきた件数', () => {
+  const full = Array.from({ length: 100 }, (_, id) => ({ id }));
+  assert.equal(assignedPatch({ status: 'fulfilled', value: { items: full, xTotal: '150' } }).assignedTotal, 150);
+  assert.equal(assignedPatch({ status: 'fulfilled', value: { items: full, xTotal: null } }).assignedTotal, 100);
+  assert.equal(assignedPatch({ status: 'fulfilled', value: { items: full, xTotal: 'abc' } }).assignedTotal, 100);
 });
 
 test('assignedPatch: 失敗なら前回の一覧に触らず、部分的な失敗だと分かる文言を返す', () => {

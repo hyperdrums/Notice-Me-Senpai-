@@ -16,6 +16,7 @@ const mock = require('./mock-gitlab.js');
 const REPO = path.join(__dirname, '..');
 const OUT = path.join(REPO, 'dist', 'gui-test');
 const CDP_PORT = 9333;
+const INSPECT_PORT = 9334;
 const ELECTRON = path.join(REPO, 'node_modules', 'electron', 'dist', 'electron.exe');
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
@@ -52,6 +53,27 @@ async function connect(wsUrl) {
 }
 
 let cdp;
+let mainCdp;
+// main プロセスで式を評価する（--inspect の口を使う）
+const evlMain = async expression => {
+  const r = await mainCdp.send('Runtime.evaluate', { expression, returnByValue: true, awaitPromise: true });
+  if (r.exceptionDetails) {
+    throw new Error('main: ' + (r.exceptionDetails.exception?.description || r.exceptionDetails.text));
+  }
+  return r.result?.value;
+};
+// shell.openExternal と Notification の表示は OS に触るので、記録するだけに差し替える。
+// main.js には手を入れない（呼ばれるたびに electron のオブジェクトからメソッドを引くので差し替えが効く）
+const STUB_MAIN = `(() => {
+  const { shell, Notification } = process.mainModule.require('electron');
+  globalThis.__opened = [];
+  globalThis.__shown = [];
+  shell.openExternal = async url => { globalThis.__opened.push(url); };
+  Notification.prototype.show = function () { globalThis.__shown.push(this.body); };
+  return shell.openExternal.toString().includes('__opened');
+})()`;
+const shownBodies = () => evlMain('JSON.stringify(globalThis.__shown)').then(JSON.parse);
+
 const evl = async expression => {
   const r = await cdp.send('Runtime.evaluate', { expression, returnByValue: true, awaitPromise: true });
   if (r.exceptionDetails) {
@@ -113,7 +135,7 @@ let m = null;
   console.log(`設定を書き込み: ${m.url}\n`);
 
   // 2) アプリを起動（DevTools プロトコル有効）
-  app = spawn(ELECTRON, ['.', `--user-data-dir=${profile}`, `--remote-debugging-port=${CDP_PORT}`],
+  app = spawn(ELECTRON, ['.', `--user-data-dir=${profile}`, `--remote-debugging-port=${CDP_PORT}`, `--inspect=${INSPECT_PORT}`],
     { cwd: REPO, stdio: 'ignore' });
 
   let target = null;
@@ -128,6 +150,10 @@ let m = null;
   cdp = await connect(target.webSocketDebuggerUrl);
   await cdp.send('Runtime.enable');
   await cdp.send('Page.enable');
+  const [mainTarget] = await json(`http://127.0.0.1:${INSPECT_PORT}/json/list`);
+  mainCdp = await connect(mainTarget.webSocketDebuggerUrl);
+  await mainCdp.send('Runtime.enable');
+  if (!(await evlMain(STUB_MAIN))) throw new Error('main プロセスの差し替えに失敗');
   console.log('アプリ起動，画面に接続');
 
   // 3) モックのデータが描画される
@@ -144,6 +170,11 @@ let m = null;
   const meta = await evl(`[...document.querySelectorAll('#todos .meta')].map(e => e.textContent).join('|')`);
   check('経過時間（たった今/時間前/日前）',
     /たった今/.test(meta) && /2時間前/.test(meta) && /1日前/.test(meta), meta.slice(0, 48) + '…');
+  const todoTitles = await evl(`[...document.querySelectorAll('#todos .title')].map(e => e.textContent).join('|')`);
+  check('タイトルに種別と参照（MR は !、Work item は #）',
+    todoTitles.includes('レビュー依頼MR !42 ログイン周りのリファクタリング')
+    && todoTitles.includes('アサインIssue #17 タスクバーのバッジが二重に表示される')
+    && todoTitles.includes('アサインWork item #21 リリース手順の整理'), todoTitles);
   await shot('01-list.png');
 
   // 4) 期限の色分け
@@ -156,6 +187,10 @@ let m = null;
 
   // 5) 担当タブ
   const ROWS = '#assignedItems li:not(.separator)';
+  const q = (await m.snapshot()).issuesQuery;
+  check('担当の取得条件（自分の未完了を期限順に 100 件）',
+    q?.scope === 'assigned_to_me' && q?.state === 'opened' && q?.order_by === 'due_date' && q?.sort === 'asc' && q?.per_page === '100',
+    JSON.stringify(q));
   const assignedTab = await evl(`document.querySelector('#assignedTab').textContent`);
   check('担当タブのラベル（超過数込み）', assignedTab === '担当 7 (超過1)', assignedTab);
   await click('.tab[data-view=assigned]');
@@ -171,6 +206,15 @@ let m = null;
   check('行頭に種別タグ（issue_type なしは Issue）',
     typeTags === 'Issue,Issue,タスク,Issue,Issue,タスク,インシデント', typeTags);
   check('担当タブに完了ボタンがない', (await count('#assignedItems button')) === 0);
+  const dueCls = await evl(`[...document.querySelectorAll(${JSON.stringify(ROWS)})].map(li => li.querySelector('.due')?.className ?? '-').join('|')`);
+  check('担当の期限の色分け（期限なしは期限を出さない）', dueCls === 'due over|due soon|due soon|due|-|-|-', dueCls);
+  const dueTexts = await evl(`[...document.querySelectorAll('#assignedItems .due')].map(e => e.textContent).join(' | ')`);
+  check('担当の期限の文言', /2日超過/.test(dueTexts) && /あと1日/.test(dueTexts) && /あと3日/.test(dueTexts) && /あと14日/.test(dueTexts), dueTexts);
+  check('担当に NaN が出ない', !(await evl(`document.querySelector('#assignedItems').textContent`)).includes('NaN'));
+  await click(ROWS);
+  await waitUntil('行のクリックで web_url を開く', async () => (await evlMain('globalThis.__opened.length')) === 1);
+  const opened = await evlMain('globalThis.__opened[0]');
+  check('行のクリックで web_url を開く', opened === 'http://127.0.0.1/group/proj-a/-/issues/17', opened);
   const typeChips = await evl(`[...document.querySelectorAll('#assignedTypes .chip')].map(e => e.textContent).join('|')`);
   check('種別のチップ', typeChips === 'すべて 7|Issue 4|タスク 2|インシデント 1', typeChips);
   await shot('02-assigned.png');
@@ -232,7 +276,7 @@ let m = null;
   const stateCount = await evl(`window.api.getState().then(s => s.count)`);
   check('state.count は To-Do の件数だけ', stateCount === 3, String(stateCount));
 
-  // 9) 新着（このとき Windows のトーストが出るはず）
+  // 9) 新着（通知は main 側で記録だけする）
   await m.push();
   await waitFor('新着がポーリングで反映', `document.querySelectorAll('#todos li').length === 4`, 30000);
   check('新着 To-Do がポーリングで増える', (await count('#todos li')) === 4);
@@ -252,6 +296,7 @@ let m = null;
   check('担当の失敗だと分かるメッセージ', partialErr.includes('HTTP 500'), partialErr);
   check('担当が失敗しても To-Do は更新', (await count('#todos li')) === 5);
   check('担当が失敗しても To-Do のバッジは更新', (await evl(`window.__badge`)) === '5');
+  check('担当が失敗しても新着を通知', (await shownBodies()).includes('モックから押した新着 2'));
   check('担当の前回の一覧が残る', (await count(ROWS)) === 7);
   await shot('06-assigned-failed.png');
 
@@ -272,17 +317,62 @@ let m = null;
   await waitFor('To-Do の失敗が消える', errorHidden);
   check('次の成功で To-Do のエラーが消える', (await evl(errorText)) === '');
 
+  // 担当の失敗に続いて To-Do も失敗したら、「通知は更新しました」を残さない
+  await m.fail('issues', 500);
+  await click('#refresh');
+  await waitFor('担当の失敗が表示される', `${errorText}.includes('担当の取得に失敗')`);
+  await m.fail('todos', 500);
+  await click('#refresh');
+  await waitFor('To-Do の失敗だけになる', `${errorText} === '取得失敗: HTTP 500'`);
+  await sleep(500);   // 遅れて届く担当の失敗で上書きされないことも見る
+  const bothErr = await evl(errorText);
+  check('両方失敗したら To-Do の失敗だけ表示', bothErr === '取得失敗: HTTP 500', bothErr);
+  await m.fail('issues', 0);
+  await m.fail('todos', 0);
+  await click('#refresh');
+  await waitFor('両方の失敗が消える', errorHidden);
+
   // 9-4) 取得上限のお知らせ
   const limitHidden = `document.querySelector('#assignedLimit').classList.contains('hidden')`;
+  const tabText = `document.querySelector('#assignedTab').textContent`;
   check('上限未満ならお知らせなし', await evl(limitHidden));
-  await m.setAssignedTotal(150);
+  await m.setAssignedCount(150);
   await click('#refresh');
   await waitFor('上限のお知らせが出る', `!${limitHidden}`);
   const limitText = await evl(`document.querySelector('#assignedLimit').textContent`);
   check('上限のお知らせ', limitText === '100 件まで表示', limitText);
+  check('取得するのは 100 件まで', (await count(ROWS)) === 100);
+  const totalLabel = await evl(tabText);
+  check('タブの件数は x-total の総数', totalLabel === '担当 150 (超過1)', totalLabel);
+  // x-total が無くても、100 件返ってきたら上限とみなす
+  await m.setAssignedTotal('none');
+  await click('#refresh');
+  await waitFor('x-total なしの件数', `${tabText} === '担当 100 (超過1)'`);
+  check('x-total なしで 100 件ならお知らせを出す', !(await evl(limitHidden)));
+  await m.setAssignedCount(null);
+  await click('#refresh');
+  await waitFor('x-total なしで 7 件', `${tabText} === '担当 7 (超過1)'`);
+  check('x-total なしで 100 件未満ならお知らせなし', await evl(limitHidden));
   await m.setAssignedTotal(null);
   await click('#refresh');
   await waitFor('上限のお知らせが消える', limitHidden);
+
+  // 9-5) 担当が応答しなくても To-Do は待たされず、時間切れで部分的な失敗になる
+  await m.hangIssues(true);
+  await m.push();
+  await click('#refresh');
+  await waitFor('担当を待たずに To-Do が更新', `document.querySelectorAll('#todos li').length === 6 && /6 件/.test(document.querySelector('#status').textContent)`, 10000);
+  check('担当が応答しなくても To-Do とヘッダは更新', true);
+  check('担当が応答しなくても To-Do のバッジは更新', (await evl(`window.__badge`)) === '6');
+  check('担当が応答しなくても新着を通知', (await shownBodies()).includes('モックから押した新着 3'));
+  await waitFor('担当の時間切れが表示される', `${errorText}.includes('担当の取得に失敗')`, 45000);
+  const timeoutErr = await evl(errorText);
+  check('担当の時間切れは部分的な失敗', timeoutErr === '担当の取得に失敗: 応答がありません（通知は更新しました）', timeoutErr);
+  check('担当の時間切れでも前回の一覧が残る', (await count(ROWS)) === 7);
+  await m.hangIssues(false);
+  await click('#refresh');
+  await waitFor('担当の時間切れが消える', errorHidden);
+  check('次の成功で時間切れのエラーが消える', (await evl(errorText)) === '');
 
   // 10) preload の公開面
   const api = await evl(`Object.keys(window.api).sort().join(',')`);
@@ -317,6 +407,8 @@ let m = null;
   check('担当タブのラベルが英語', assignedEn === 'Assigned 7 (1 overdue)', assignedEn);
   const sepEn = await evl(`document.querySelector('#assignedItems .separator').textContent`);
   check('区切り行が英語', sepEn === 'No due date', sepEn);
+  const assignedDueEn = await evl(`[...document.querySelectorAll('#assignedItems .due')].map(e => e.textContent).join(' | ')`);
+  check('担当の期限が英語', assignedDueEn.includes('2d overdue') && assignedDueEn.includes('in 1d'), assignedDueEn);
   const typeTagsEn = await evl(`[...document.querySelectorAll('#assignedItems .tag')].map(e => e.textContent).join(',')`);
   check('種別タグが英語', typeTagsEn === 'Issue,Issue,Task,Issue,Issue,Task,Incident', typeTagsEn);
   const limitEn = await evl(`document.querySelector('#assignedLimit').textContent`);
@@ -340,6 +432,7 @@ let m = null;
   console.log(`\n${results.length - failed.length} passed, ${failed.length} failed`);
   console.log(`screenshots: ${OUT}`);
   try { cdp?.close(); } catch {}
+  try { mainCdp?.close(); } catch {}
   if (app) app.kill();
   if (m) await m.close();
   process.exit(failed.length ? 1 : 0);

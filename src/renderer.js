@@ -113,14 +113,14 @@ function assignedRow(i) {
   return li;
 }
 
-function renderAssigned(items, limited, error) {
+function renderAssigned(items, limited, total, error) {
   renderChips($('#assignedRepos'), 'assignedRepo', countBy(items, issueRepo), shortName, p => p);
   const inRepo = items.filter(i => filter.assignedRepo === 'all' || issueRepo(i) === filter.assignedRepo);
   // 種別が 1 つ以下なら選ぶ意味がないので行ごと隠す（空の Map を渡すと選択も 'all' に戻る）
   const types = countBy(inRepo, workItemType);
   renderChips($('#assignedTypes'), 'assignedType', types.size >= 2 ? types : new Map(), v => workItemTypeLabel(lang, v));
   const shown = inRepo.filter(i => filter.assignedType === 'all' || workItemType(i) === filter.assignedType);
-  $('#assignedTab').textContent = assignedTabLabel(items, { lang });
+  $('#assignedTab').textContent = assignedTabLabel(items, { lang, total });
   $('#assignedLimit').classList.toggle('hidden', !limited);
   $('#assignedLimit').textContent = tr(lang, 'assignedLimit', { n: ASSIGNED_LIMIT });
 
@@ -140,7 +140,7 @@ function render(s) {
   $('#status').textContent = s.loading ? tr(lang, 'loading')
     : s.updatedAt ? `${tr(lang, 'statusCount', { n: s.count })} / ${new Date(s.updatedAt).toLocaleTimeString()}` : '';
   renderTodos(s.todos, s.error);
-  renderAssigned(s.assigned ?? [], s.assignedLimited, s.error || s.assignedError);
+  renderAssigned(s.assigned ?? [], s.assignedLimited, s.assignedTotal, s.error || s.assignedError);
   drawBadge(s.count);
 }
 

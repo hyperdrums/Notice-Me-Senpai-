@@ -32,7 +32,7 @@ const UI = {
     errNotConfigured: '未設定です。設定タブで URL とトークンを入力してください。',
     errInvalidToken: 'トークンが無効です (401)',
     errFetch: '取得失敗: {msg}', errDone: '完了処理に失敗: {msg}',
-    errAssigned: '担当の取得に失敗: {msg}（通知は更新しました）', errBadResponse: '応答の形式が不正です',
+    errAssigned: '担当の取得に失敗: {msg}（通知は更新しました）', errBadResponse: '応答の形式が不正です', errTimeout: '応答がありません',
   },
   en: {
     appTitle: 'Notice Me, Senpai!',
@@ -58,7 +58,7 @@ const UI = {
     errNotConfigured: 'Not configured. Set the URL and token in the Settings tab.',
     errInvalidToken: 'Invalid token (401)',
     errFetch: 'Fetch failed: {msg}', errDone: 'Could not mark as done: {msg}',
-    errAssigned: 'Could not fetch assigned items: {msg} (To-Dos are up to date)', errBadResponse: 'Unexpected response format',
+    errAssigned: 'Could not fetch assigned items: {msg} (To-Dos are up to date)', errBadResponse: 'Unexpected response format', errTimeout: 'No response',
   },
 };
 
@@ -90,6 +90,9 @@ const WORK_ITEM_TYPES = {
 
 // 担当の取得件数の上限（per_page）
 const ASSIGNED_LIMIT = 100;
+
+// 担当の取得を待つ上限（ミリ秒）
+const ASSIGNED_TIMEOUT_MS = 30000;
 
 // 翻訳。lang が無ければ日本語、key が無ければ key をそのまま返す
 function tr(lang, key, vars) {
@@ -151,14 +154,18 @@ function splitByDue(items) {
   return { dated, undated: items.filter(i => !i.due_date) };
 }
 
-// 期限超過の件数。期限なしは超過に数えない
+// 期限超過の件数。期限なしは超過に数えない（dueInfo に null を渡さないよう dated だけ見る）
 function countOverdue(items, opts = {}) {
-  return items.filter(i => i.due_date && dueInfo(i.due_date, opts).cls.includes('over')).length;
+  return splitByDue(items).dated.filter(i => dueInfo(i.due_date, opts).cls.includes('over')).length;
 }
+
+// x-total ヘッダの値を数にする。無い・読めないときは null
+const parseTotal = xTotal => (/^\d+$/.test(xTotal ?? '') ? Number(xTotal) : null);
 
 // 上限に達したか。x-total が無い・読めないときは返ってきた件数で判断する
 function reachedLimit(xTotal, n, limit = ASSIGNED_LIMIT) {
-  return /^\d+$/.test(xTotal ?? '') ? Number(xTotal) > limit : n >= limit;
+  const total = parseTotal(xTotal);
+  return total !== null ? total > limit : n >= limit;
 }
 
 // 担当の取得結果（Promise.allSettled の 1 要素）→ state への差分。
@@ -168,18 +175,20 @@ function assignedPatch(result, lang = 'ja') {
     return { assignedError: tr(lang, 'errAssigned', { msg: result.reason?.message ?? String(result.reason) }) };
   }
   const { items, xTotal } = result.value;
-  return { assigned: items, assignedLimited: reachedLimit(xTotal, items.length), assignedError: null };
+  return { assigned: items, assignedLimited: reachedLimit(xTotal, items.length), assignedTotal: parseTotal(xTotal) ?? items.length, assignedError: null };
 }
 
 // ---------- 表示用の文字列 ----------
-// 担当タブのラベル。件数は全リポジトリの合計で、絞り込みの影響を受けない
+// 担当タブのラベル。件数は全リポジトリの合計で、絞り込みの影響を受けない。
+// total は上限で切られる前の総数（x-total）。超過数は取得できた分だけで数える
 function assignedTabLabel(items, opts = {}) {
-  const { lang = 'ja' } = opts;
+  const { lang = 'ja', total } = opts;
   if (!items.length) return tr(lang, 'tabAssigned');
   const over = countOverdue(items, opts);
+  const n = total ?? items.length;
   return over
-    ? tr(lang, 'assignedTabOver', { n: items.length, m: over })
-    : tr(lang, 'assignedTab', { n: items.length });
+    ? tr(lang, 'assignedTabOver', { n, m: over })
+    : tr(lang, 'assignedTab', { n });
 }
 
 
@@ -214,7 +223,7 @@ function ago(iso, opts = {}) {
 // ブラウザでは module が無いのでこの行は効かない。Node（テスト）だけ通る
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
-    LANGS, CONFIG_DEFAULTS, TYPES, UI, ACTIONS, WORK_ITEM_TYPES, ASSIGNED_LIMIT, tr, actionLabel,
+    LANGS, CONFIG_DEFAULTS, TYPES, UI, ACTIONS, WORK_ITEM_TYPES, ASSIGNED_LIMIT, ASSIGNED_TIMEOUT_MS, tr, actionLabel,
     apiUrl, mergeConfig, intervalSec, freshTodos, todoRepo, issueRepo, shortName, dueInfo, ago,
     todoRef, workItemType, workItemTypeLabel, splitByDue, countOverdue, reachedLimit, assignedPatch, assignedTabLabel,
   };
