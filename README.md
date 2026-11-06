@@ -12,7 +12,7 @@ NMS は、GitLab の To-Do を Windows のタスクバーに件数バッジで�
 
 <p>
   <img src="docs/screenshot-list.png" width="380" alt="通知タブ（日本語）: To-Do の一覧と、リポジトリ・種別の絞り込み">
-  <img src="docs/screenshot-due.png" width="380" alt="期限タブ（英語 UI）: アサインされた Issue を期限が近い順に表示">
+  <img src="docs/screenshot-assigned.png" width="380" alt="担当タブ（英語 UI）: アサインされた作業アイテムを期限が近い順に表示">
 </p>
 
 <p align="center">右は UI を英語に切り替えた状態です。設定から日本語 / 英語を選べます（初回は OS の言語で自動決定）。</p>
