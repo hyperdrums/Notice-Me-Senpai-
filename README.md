@@ -138,7 +138,7 @@ GitLab の仕様です。To-Do は「見たかどうか」ではなく「対応�
 確認するには、ダウンロードしたファイルと同じフォルダで次を実行します。
 
 ```
-Get-FileHash .\NMS-0.1.1.exe -Algorithm SHA256
+Get-FileHash .\NMS-0.2.0.exe -Algorithm SHA256
 ```
 
 `Hash` の値が `SHA256SUMS.txt` のものと一致すれば、ファイルは公式のままです。
@@ -199,7 +199,7 @@ node scripts/make-icon.js   # アイコン build/icon.ico を再生成（通常�
 `package.json` の `version` を上げてコミットし、同じ番号のタグを push すると、GitHub Actions がビルドして Releases に `NMS-<version>.exe` と `SHA256SUMS.txt` を公開します。チェックサムはリリース本文の末尾にも追記されます。
 
 ```
-npm version patch           # version を上げてコミットとタグ v0.1.1 を作成
+npm version patch           # version を上げてコミットとタグ v0.2.1 を作成
 git push --follow-tags
 ```
 
