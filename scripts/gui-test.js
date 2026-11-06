@@ -154,15 +154,39 @@ let m = null;
   const dues = await evl(`[...document.querySelectorAll('#todos .due')].map(e => e.textContent).join(' | ')`);
   check('マイルストーン期限も表示', dues.includes('MS期限'), dues);
 
-  // 5) 期限タブ
-  const dueTab = await evl(`document.querySelector('#dueTab').textContent`);
-  check('期限タブのラベル（超過数込み）', dueTab === '期限 3 (超過1)', dueTab);
-  await click('.tab[data-view=due]');
-  await waitFor('期限一覧 3 件', `document.querySelectorAll('#issues li').length === 3`);
-  check('期限なし Issue は除外', (await count('#issues li')) === 3);
-  const order = await evl(`[...document.querySelectorAll('#issues .title')].map(e => e.textContent.split(' ')[0]).join('|')`);
-  check('期限が近い順', order === '#17|#22|#23', order);
-  await shot('02-due.png');
+  // 5) 担当タブ
+  const ROWS = '#assignedItems li:not(.separator)';
+  const assignedTab = await evl(`document.querySelector('#assignedTab').textContent`);
+  check('担当タブのラベル（超過数込み）', assignedTab === '担当 7 (超過1)', assignedTab);
+  await click('.tab[data-view=assigned]');
+  await waitFor('担当一覧 7 件', `document.querySelectorAll(${JSON.stringify(ROWS)}).length === 7`);
+  check('期限なしも含めて表示', (await count(ROWS)) === 7);
+  const order = await evl(`[...document.querySelectorAll('#assignedItems .title')].map(e => e.textContent.match(/#\\d+/)[0]).join('|')`);
+  check('期限が近い順で期限なしは末尾', order === '#17|#22|#25|#23|#24|#26|#27', order);
+  const sep = await evl(`[...document.querySelectorAll('#assignedItems .separator')].map(e => e.textContent).join('|')`);
+  check('期限なしの区切り行', sep === '期限なし', sep);
+  const sepAt = await evl(`[...document.querySelector('#assignedItems').children].findIndex(e => e.classList.contains('separator'))`);
+  check('区切り行は期限ありの直後', sepAt === 4, String(sepAt));
+  const typeTags = await evl(`[...document.querySelectorAll('#assignedItems .tag')].map(e => e.textContent).join(',')`);
+  check('行頭に種別タグ（issue_type なしは Issue）',
+    typeTags === 'Issue,Issue,タスク,Issue,Issue,タスク,インシデント', typeTags);
+  check('担当タブに完了ボタンがない', (await count('#assignedItems button')) === 0);
+  const typeChips = await evl(`[...document.querySelectorAll('#assignedTypes .chip')].map(e => e.textContent).join('|')`);
+  check('種別のチップ', typeChips === 'すべて 7|Issue 4|タスク 2|インシデント 1', typeChips);
+  await shot('02-assigned.png');
+
+  await clickChip('#assignedTypes', 'タスク');
+  await waitFor('タスクのみ', `document.querySelectorAll(${JSON.stringify(ROWS)}).length === 2`);
+  check('種別で絞り込み', (await count(ROWS)) === 2);
+  const tabFiltered = await evl(`document.querySelector('#assignedTab').textContent`);
+  check('絞り込んでもタブの件数は合計のまま', tabFiltered === '担当 7 (超過1)', tabFiltered);
+  await clickChip('#assignedRepos', 'proj-c');
+  await waitFor('proj-c のみ', `document.querySelectorAll(${JSON.stringify(ROWS)}).length === 1`);
+  check('種別が 1 つなら種別の行を隠す', (await count('#assignedTypes .chip')) === 0);
+  await clickChip('#assignedRepos', 'すべて');
+  await waitFor('全件に戻す', `document.querySelectorAll(${JSON.stringify(ROWS)}).length === 7`);
+  check('隠れた種別の選択は解除される', (await count('#assignedTypes .chip.active')) === 1
+    && (await evl(`document.querySelector('#assignedTypes .chip.active').textContent`)).startsWith('すべて'));
 
   // 6) 絞り込み
   await click('.tab[data-view=list]');
@@ -193,13 +217,20 @@ let m = null;
   await cdp.send('Page.addScriptToEvaluateOnNewDocument', {
     source: `window.__draws = 0;
       const orig = HTMLCanvasElement.prototype.toDataURL;
-      HTMLCanvasElement.prototype.toDataURL = function (...a) { window.__draws++; return orig.apply(this, a); };`,
+      HTMLCanvasElement.prototype.toDataURL = function (...a) { window.__draws++; return orig.apply(this, a); };
+      const origText = CanvasRenderingContext2D.prototype.fillText;
+      CanvasRenderingContext2D.prototype.fillText = function (t, ...a) { window.__badge = t; return origText.call(this, t, ...a); };`,
   });
   await cdp.send('Page.reload');
   await waitFor('再読み込み後に一覧', `document.querySelectorAll('#todos li').length === 3`, 20000);
   await waitFor('バッジ画像を描画', `window.__draws >= 2`, 10000);
   const draws = await evl(`window.__draws`);
   check('バッジ画像を描画して main に渡す', draws >= 2, `${draws} 回描画`);
+  // 担当は 7 件あるが、バッジとトレイの件数は To-Do だけ
+  const badge = await evl(`window.__badge`);
+  check('バッジは To-Do の件数だけ', badge === '3', String(badge));
+  const stateCount = await evl(`window.api.getState().then(s => s.count)`);
+  check('state.count は To-Do の件数だけ', stateCount === 3, String(stateCount));
 
   // 9) 新着（このとき Windows のトーストが出るはず）
   await m.push();
@@ -208,6 +239,50 @@ let m = null;
   const fresh = await evl(`document.querySelector('#todos li .title').textContent`);
   check('新着が先頭に表示', fresh.includes('モックから押した新着'), fresh);
   await shot('04-new-arrival.png');
+
+  // 9-2) 担当だけ取得に失敗しても To-Do は動き続ける
+  const errorText = `document.querySelector('#error').textContent`;
+  const errorShown = `document.querySelector('#error').style.display === 'block'`;
+  const errorHidden = `document.querySelector('#error').style.display === 'none'`;
+  await m.fail('issues', 500);
+  await m.push();
+  await click('#refresh');
+  await waitFor('担当の失敗が表示される', `${errorText}.includes('担当の取得に失敗')`);
+  const partialErr = await evl(errorText);
+  check('担当の失敗だと分かるメッセージ', partialErr.includes('HTTP 500'), partialErr);
+  check('担当が失敗しても To-Do は更新', (await count('#todos li')) === 5);
+  check('担当が失敗しても To-Do のバッジは更新', (await evl(`window.__badge`)) === '5');
+  check('担当の前回の一覧が残る', (await count(ROWS)) === 7);
+  await shot('06-assigned-failed.png');
+
+  await m.fail('issues', 0);
+  await click('#refresh');
+  await waitFor('担当の失敗が消える', errorHidden);
+  check('次の成功で担当のエラーが消える', (await evl(errorText)) === '');
+
+  // 9-3) To-Do の失敗は従来どおり（画面の一覧はそのまま、エラーを表示）
+  await m.fail('todos', 500);
+  await click('#refresh');
+  await waitFor('To-Do の失敗が表示される', `${errorShown} && ${errorText}.includes('取得失敗')`);
+  const todoErr = await evl(errorText);
+  check('To-Do の失敗は取得失敗と表示', todoErr === '取得失敗: HTTP 500', todoErr);
+  check('To-Do の失敗で一覧とバッジは維持', (await count('#todos li')) === 5 && (await evl(`window.__badge`)) === '5');
+  await m.fail('todos', 0);
+  await click('#refresh');
+  await waitFor('To-Do の失敗が消える', errorHidden);
+  check('次の成功で To-Do のエラーが消える', (await evl(errorText)) === '');
+
+  // 9-4) 取得上限のお知らせ
+  const limitHidden = `document.querySelector('#assignedLimit').classList.contains('hidden')`;
+  check('上限未満ならお知らせなし', await evl(limitHidden));
+  await m.setAssignedTotal(150);
+  await click('#refresh');
+  await waitFor('上限のお知らせが出る', `!${limitHidden}`);
+  const limitText = await evl(`document.querySelector('#assignedLimit').textContent`);
+  check('上限のお知らせ', limitText === '100 件まで表示', limitText);
+  await m.setAssignedTotal(null);
+  await click('#refresh');
+  await waitFor('上限のお知らせが消える', limitHidden);
 
   // 10) preload の公開面
   const api = await evl(`Object.keys(window.api).sort().join(',')`);
@@ -238,6 +313,14 @@ let m = null;
   check('ヘッダが英語', /\d+ to-dos/.test(statusEn), statusEn);
   const dueEn = await evl(`[...document.querySelectorAll('#todos .due')].map(e => e.textContent).join(' | ')`);
   check('期限表示が英語', dueEn.includes('overdue') && dueEn.includes('Milestone'), dueEn);
+  const assignedEn = await evl(`document.querySelector('#assignedTab').textContent`);
+  check('担当タブのラベルが英語', assignedEn === 'Assigned 7 (1 overdue)', assignedEn);
+  const sepEn = await evl(`document.querySelector('#assignedItems .separator').textContent`);
+  check('区切り行が英語', sepEn === 'No due date', sepEn);
+  const typeTagsEn = await evl(`[...document.querySelectorAll('#assignedItems .tag')].map(e => e.textContent).join(',')`);
+  check('種別タグが英語', typeTagsEn === 'Issue,Issue,Task,Issue,Issue,Task,Incident', typeTagsEn);
+  const limitEn = await evl(`document.querySelector('#assignedLimit').textContent`);
+  check('上限のお知らせが英語', limitEn === 'Showing the first 100', limitEn);
   await click('.tab[data-view=settings]');
   const saveEn = await evl(`document.querySelector('button[type=submit]').textContent`);
   check('保存ボタンが Save', saveEn === 'Save', saveEn);

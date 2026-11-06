@@ -3,8 +3,9 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const {
-  LANGS, CONFIG_DEFAULTS, TYPES, UI, ACTIONS, tr, actionLabel,
+  LANGS, CONFIG_DEFAULTS, TYPES, UI, ACTIONS, ASSIGNED_LIMIT, tr, actionLabel,
   apiUrl, mergeConfig, intervalSec, freshTodos, todoRepo, issueRepo, shortName, dueInfo, ago,
+  todoRef, workItemType, workItemTypeLabel, splitByDue, countOverdue, reachedLimit, assignedPatch, assignedTabLabel,
 } = require('../src/lib.js');
 
 // ---------- apiUrl ----------
@@ -142,13 +143,120 @@ test('shortName: 末尾の名前だけ残す', () => {
   assert.equal(shortName('group/sub/proj'), 'proj');
 });
 
+// ---------- 担当タブ ----------
+test('workItemType: issue_type が無ければ issue', () => {
+  assert.equal(workItemType({ issue_type: 'task' }), 'task');
+  assert.equal(workItemType({}), 'issue');
+  assert.equal(workItemType({ issue_type: null }), 'issue');
+});
+
+test('workItemTypeLabel: 日英のラベル', () => {
+  assert.deepEqual(['issue', 'incident', 'test_case', 'task'].map(t => workItemTypeLabel('ja', t)),
+    ['Issue', 'インシデント', 'テストケース', 'タスク']);
+  assert.deepEqual(['issue', 'incident', 'test_case', 'task'].map(t => workItemTypeLabel('en', t)),
+    ['Issue', 'Incident', 'Test case', 'Task']);
+});
+
+test('workItemTypeLabel: 未知の種別は生の値を返す', () => {
+  assert.equal(workItemTypeLabel('ja', 'future_type'), 'future_type');
+  assert.equal(workItemTypeLabel('en', 'future_type'), 'future_type');
+});
+
+test('splitByDue: 期限が近い順に並べ、期限なしを分ける', () => {
+  const items = [
+    { iid: 1, due_date: null }, { iid: 2, due_date: '2026-12-01' }, { iid: 3 },
+    { iid: 4, due_date: '2026-11-01' }, { iid: 5, due_date: '2026-11-15' },
+  ];
+  const { dated, undated } = splitByDue(items);
+  assert.deepEqual(dated.map(i => i.iid), [4, 5, 2]);
+  assert.deepEqual(undated.map(i => i.iid), [1, 3]);
+});
+
+test('splitByDue: 渡した配列を書き換えない', () => {
+  const items = [{ iid: 1, due_date: '2026-12-01' }, { iid: 2, due_date: '2026-11-01' }];
+  splitByDue(items);
+  assert.deepEqual(items.map(i => i.iid), [1, 2]);
+});
+
+test('countOverdue: 期限なしは超過に数えない（今日までも超過ではない）', () => {
+  const items = [
+    { due_date: '2026-11-01' }, { due_date: '2026-11-02' }, { due_date: '2026-11-03' },
+    { due_date: '2026-11-04' }, { due_date: null }, {},
+  ];
+  assert.equal(countOverdue(items, { today: TODAY }), 2);
+});
+
+test('assignedTabLabel: 合計と、あれば超過数', () => {
+  const over = [{ due_date: '2026-11-01' }, { due_date: null }, {}];
+  const noOver = [{ due_date: '2026-11-10' }, { due_date: null }];
+  assert.equal(assignedTabLabel(over, { today: TODAY }), '担当 3 (超過1)');
+  assert.equal(assignedTabLabel(over, { today: TODAY, lang: 'en' }), 'Assigned 3 (1 overdue)');
+  assert.equal(assignedTabLabel(noOver, { today: TODAY }), '担当 2');
+  assert.equal(assignedTabLabel(noOver, { today: TODAY, lang: 'en' }), 'Assigned 2');
+  assert.equal(assignedTabLabel([{}], { today: TODAY }), '担当 1');
+});
+
+test('assignedTabLabel: 0 件ならタブ名だけ', () => {
+  assert.equal(assignedTabLabel([]), '担当');
+  assert.equal(assignedTabLabel([], { lang: 'en' }), 'Assigned');
+});
+
+test('reachedLimit: x-total があれば上限を超えたかで決まる', () => {
+  assert.equal(reachedLimit('101', 100), true);
+  assert.equal(reachedLimit('100', 100), false);   // ちょうど 100 件は全件取れている
+  assert.equal(reachedLimit('12', 12), false);
+  assert.equal(ASSIGNED_LIMIT, 100);
+});
+
+test('reachedLimit: x-total が無ければ返ってきた件数で決まる', () => {
+  assert.equal(reachedLimit(null, 100), true);
+  assert.equal(reachedLimit(undefined, 100), true);
+  assert.equal(reachedLimit('', 100), true);
+  assert.equal(reachedLimit('abc', 100), true);
+  assert.equal(reachedLimit(null, 99), false);
+});
+
+test('assignedPatch: 成功なら一覧を差し替えてエラーを消す', () => {
+  const items = [{ id: 1 }];
+  assert.deepEqual(
+    assignedPatch({ status: 'fulfilled', value: { items, xTotal: '1' } }),
+    { assigned: items, assignedLimited: false, assignedError: null },
+  );
+  const full = Array.from({ length: 100 }, (_, id) => ({ id }));
+  assert.equal(assignedPatch({ status: 'fulfilled', value: { items: full, xTotal: '150' } }).assignedLimited, true);
+});
+
+test('assignedPatch: 失敗なら前回の一覧に触らず、部分的な失敗だと分かる文言を返す', () => {
+  const failed = { status: 'rejected', reason: new Error('HTTP 500') };
+  assert.deepEqual(assignedPatch(failed), { assignedError: '担当の取得に失敗: HTTP 500（通知は更新しました）' });
+  assert.deepEqual(assignedPatch(failed, 'en'),
+    { assignedError: 'Could not fetch assigned items: HTTP 500 (To-Dos are up to date)' });
+});
+
+test('assignedPatch: バッジの件数（count）を決して変えない', () => {
+  const ok = assignedPatch({ status: 'fulfilled', value: { items: [{ id: 1 }], xTotal: '1' } });
+  const ng = assignedPatch({ status: 'rejected', reason: new Error('x') });
+  assert.ok(!('count' in ok));
+  assert.ok(!('count' in ng));
+});
+
+test('todoRef: MR は !、WorkItem を含むそれ以外は #', () => {
+  assert.equal(todoRef({ target_type: 'MergeRequest', target: { iid: 3 } }), '!3');
+  assert.equal(todoRef({ target_type: 'Issue', target: { iid: 3 } }), '#3');
+  assert.equal(todoRef({ target_type: 'WorkItem', target: { iid: 3 } }), '#3');
+  assert.equal(todoRef({ target_type: 'Commit', target: {} }), '');
+  assert.equal(todoRef({ target_type: 'Issue' }), '');
+});
+
 // ---------- 翻訳 ----------
 test('tr: 言語で切り替わり、{n} を差し込む', () => {
   assert.equal(tr('ja', 'tabList'), '通知');
   assert.equal(tr('en', 'tabList'), 'Notifications');
   assert.equal(tr('ja', 'statusCount', { n: 4 }), '4 件');
   assert.equal(tr('en', 'statusCount', { n: 4 }), '4 to-dos');
-  assert.equal(tr('en', 'dueTabOver', { n: 3, m: 1 }), 'Due 3 (1 overdue)');
+  assert.equal(tr('en', 'assignedTabOver', { n: 3, m: 1 }), 'Assigned 3 (1 overdue)');
+  assert.equal(tr('ja', 'assignedLimit', { n: 100 }), '100 件まで表示');
+  assert.equal(tr('en', 'assignedLimit', { n: 100 }), 'Showing the first 100');
 });
 
 test('tr: 未知の lang は日本語、未知の key はそのまま返す', () => {
@@ -194,6 +302,8 @@ test('翻訳: 空文字の訳がない', () => {
 test('TYPES: target_type の略称', () => {
   assert.equal(TYPES.MergeRequest, 'MR');
   assert.equal(TYPES.Issue, 'Issue');
+  assert.equal(TYPES.WorkItem, 'Work item');
+  assert.equal(TYPES.Epic, 'Epic');
 });
 
 // ---------- 言語設定が見つけられるか ----------

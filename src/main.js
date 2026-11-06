@@ -4,7 +4,7 @@ const {
 } = require('electron');
 const path = require('path');
 const fs = require('fs');
-const { CONFIG_DEFAULTS, apiUrl, mergeConfig, intervalSec, freshTodos, tr } = require('./lib.js');
+const { CONFIG_DEFAULTS, ASSIGNED_LIMIT, apiUrl, mergeConfig, intervalSec, freshTodos, assignedPatch, tr } = require('./lib.js');
 
 // 軽量化: GPU・ネットワークを別プロセスにせず、メインに統合する（素のHTMLなのでGPU不要）
 app.disableHardwareAcceleration();
@@ -24,7 +24,8 @@ let timer = null;
 let quitting = false;
 let config = { ...DEFAULTS, token: '' };
 let knownIds = null; // 初回取得ではデスクトップ通知を出さない
-let state = { todos: [], issues: [], count: 0, error: null, updatedAt: null, loading: false };
+// count は To-Do だけの件数（バッジとトレイ用）。担当の件数は混ぜない
+let state = { todos: [], assigned: [], assignedLimited: false, assignedError: null, count: 0, error: null, updatedAt: null, loading: false };
 
 // 初回起動（設定が無いとき）だけ OS の言語を見る。ja 以外なら英語で出す
 const guessLang = () => (String(app.getLocale() || '').toLowerCase().startsWith('ja') ? 'ja' : 'en');
@@ -81,25 +82,35 @@ async function api(p, method = 'GET') {
   return res;
 }
 
+async function fetchTodos() {
+  const res = await api('/todos?state=pending&per_page=100');
+  const todos = await res.json();
+  return { todos, count: Number(res.headers.get('x-total')) || todos.length };
+}
+
+// 担当タブ用: 自分にアサインされた未完了の作業アイテム。issue_type を指定しなければタスクなども返る
+async function fetchAssigned() {
+  const res = await api(`/issues?scope=assigned_to_me&state=opened&order_by=due_date&sort=asc&per_page=${ASSIGNED_LIMIT}`);
+  const items = await res.json();
+  if (!Array.isArray(items)) throw new Error(tr(config.lang, 'errBadResponse'));
+  return { items, xTotal: res.headers.get('x-total') };
+}
+
 async function poll() {
   if (!config.baseUrl || !config.token) {
-    setState({ todos: [], issues: [], count: 0, error: tr(config.lang, 'errNotConfigured') });
+    setState({ todos: [], assigned: [], assignedLimited: false, assignedError: null, count: 0, error: tr(config.lang, 'errNotConfigured') });
     return;
   }
   setState({ loading: true });
   try {
-    const [res, issueRes] = await Promise.all([
-      api('/todos?state=pending&per_page=100'),
-      // 期限タブ用: 自分にアサインされた未完了 Issue（期限が近い順、期限なしは末尾）
-      api('/issues?scope=assigned_to_me&state=opened&order_by=due_date&sort=asc&per_page=100'),
-    ]);
-    const todos = await res.json();
-    const issues = (await issueRes.json()).filter(i => i.due_date);
-    const count = Number(res.headers.get('x-total')) || todos.length;
+    // 担当の失敗で To-Do を巻き込まないよう、別々に結果を受ける
+    const [todoResult, assignedResult] = await Promise.allSettled([fetchTodos(), fetchAssigned()]);
+    if (todoResult.status === 'rejected') throw todoResult.reason;
+    const { todos, count } = todoResult.value;
     notifyNew(todos);
-    setState({ todos, issues, count, error: null, updatedAt: Date.now(), loading: false });
+    setState({ todos, count, ...assignedPatch(assignedResult, config.lang), error: null, updatedAt: Date.now(), loading: false });
   } catch (e) {
-    setState({ error: tr(config.lang, 'errFetch', { msg: e.message }), loading: false });
+    setState({ error: tr(config.lang, 'errFetch', { msg: e.message }), assignedError: null, loading: false });
   }
 }
 

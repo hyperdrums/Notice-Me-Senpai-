@@ -10,12 +10,13 @@ const CONFIG_DEFAULTS = { baseUrl: '', intervalSec: 60, notify: true, insecure: 
 const UI = {
   ja: {
     appTitle: 'Notice Me, Senpai!',
-    tabList: '通知', tabDue: '期限', tabSettings: '設定', refresh: '更新',
+    tabList: '通知', tabAssigned: '担当', tabSettings: '設定', refresh: '更新',
     loading: '取得中…', statusCount: '{n} 件',
-    emptyTodos: '通知はありません', emptyIssues: '期限付きのアサイン Issue はありません',
+    emptyTodos: '通知はありません', emptyAssigned: 'アサインされた作業アイテムはありません',
     done: '完了', all: 'すべて', noneRepo: '(なし)',
-    duePrefix: '期限', msDuePrefix: 'MS期限', dueToday: '今日まで',
-    dueIn: 'あと{n}日', dueOver: '{n}日超過', dueTab: '期限 {n}', dueTabOver: '期限 {n} (超過{m})',
+    duePrefix: '期限', msDuePrefix: 'MS期限', dueToday: '今日まで', noDueDate: '期限なし',
+    dueIn: 'あと{n}日', dueOver: '{n}日超過', assignedTab: '担当 {n}', assignedTabOver: '担当 {n} (超過{m})',
+    assignedLimit: '{n} 件まで表示',
     agoNow: 'たった今', agoMin: '{n}分前', agoHour: '{n}時間前', agoDay: '{n}日前',
     lblBaseUrl: 'GitLab URL',
     lblToken: 'Personal Access Token（スコープ: read_api。完了操作もするなら api）',
@@ -31,15 +32,17 @@ const UI = {
     errNotConfigured: '未設定です。設定タブで URL とトークンを入力してください。',
     errInvalidToken: 'トークンが無効です (401)',
     errFetch: '取得失敗: {msg}', errDone: '完了処理に失敗: {msg}',
+    errAssigned: '担当の取得に失敗: {msg}（通知は更新しました）', errBadResponse: '応答の形式が不正です',
   },
   en: {
     appTitle: 'Notice Me, Senpai!',
-    tabList: 'Notifications', tabDue: 'Due', tabSettings: 'Settings', refresh: 'Refresh',
+    tabList: 'Notifications', tabAssigned: 'Assigned', tabSettings: 'Settings', refresh: 'Refresh',
     loading: 'Loading…', statusCount: '{n} to-dos',
-    emptyTodos: 'No notifications', emptyIssues: 'No assigned issues with a due date',
+    emptyTodos: 'No notifications', emptyAssigned: 'No work items assigned to you',
     done: 'Done', all: 'All', noneRepo: '(none)',
-    duePrefix: 'Due', msDuePrefix: 'Milestone', dueToday: 'today',
-    dueIn: 'in {n}d', dueOver: '{n}d overdue', dueTab: 'Due {n}', dueTabOver: 'Due {n} ({m} overdue)',
+    duePrefix: 'Due', msDuePrefix: 'Milestone', dueToday: 'today', noDueDate: 'No due date',
+    dueIn: 'in {n}d', dueOver: '{n}d overdue', assignedTab: 'Assigned {n}', assignedTabOver: 'Assigned {n} ({m} overdue)',
+    assignedLimit: 'Showing the first {n}',
     agoNow: 'just now', agoMin: '{n}m ago', agoHour: '{n}h ago', agoDay: '{n}d ago',
     lblBaseUrl: 'GitLab URL',
     lblToken: 'Personal Access Token (scope: read_api; api if you use Done)',
@@ -55,6 +58,7 @@ const UI = {
     errNotConfigured: 'Not configured. Set the URL and token in the Settings tab.',
     errInvalidToken: 'Invalid token (401)',
     errFetch: 'Fetch failed: {msg}', errDone: 'Could not mark as done: {msg}',
+    errAssigned: 'Could not fetch assigned items: {msg} (To-Dos are up to date)', errBadResponse: 'Unexpected response format',
   },
 };
 
@@ -76,7 +80,16 @@ const ACTIONS = {
   },
 };
 
-const TYPES = { MergeRequest: 'MR', Issue: 'Issue', Commit: 'Commit', Epic: 'Epic', DesignManagement__Design: 'Design' };
+const TYPES = { MergeRequest: 'MR', Issue: 'Issue', WorkItem: 'Work item', Commit: 'Commit', Epic: 'Epic', DesignManagement__Design: 'Design' };
+
+// 担当タブの issue_type のラベル
+const WORK_ITEM_TYPES = {
+  ja: { issue: 'Issue', incident: 'インシデント', test_case: 'テストケース', task: 'タスク' },
+  en: { issue: 'Issue', incident: 'Incident', test_case: 'Test case', task: 'Task' },
+};
+
+// 担当の取得件数の上限（per_page）
+const ASSIGNED_LIMIT = 100;
 
 // 翻訳。lang が無ければ日本語、key が無ければ key をそのまま返す
 function tr(lang, key, vars) {
@@ -123,7 +136,53 @@ const todoRepo = (t, lang = 'ja') => t.project?.path_with_namespace ?? t.group?.
 const issueRepo = i => i.references?.full?.replace(/[#!]\d+$/, '') ?? String(i.project_id);
 const shortName = p => p.split('/').pop();
 
+// To-Do の参照番号。MR だけ !、それ以外（WorkItem を含む）は #。iid が無ければ空
+const todoRef = t => (t.target?.iid != null ? `${t.target_type === 'MergeRequest' ? '!' : '#'}${t.target.iid}` : '');
+
+// issue_type が無ければ Issue として扱う
+const workItemType = i => i.issue_type || 'issue';
+
+// 未知の issue_type は GitLab の生の値をそのまま出す
+const workItemTypeLabel = (lang, type) => WORK_ITEM_TYPES[lang]?.[type] ?? WORK_ITEM_TYPES.ja[type] ?? type;
+
+// 期限ありを近い順に並べ、期限なしと分けて返す。渡した配列は書き換えない
+function splitByDue(items) {
+  const dated = items.filter(i => i.due_date).sort((a, b) => a.due_date.localeCompare(b.due_date));
+  return { dated, undated: items.filter(i => !i.due_date) };
+}
+
+// 期限超過の件数。期限なしは超過に数えない
+function countOverdue(items, opts = {}) {
+  return items.filter(i => i.due_date && dueInfo(i.due_date, opts).cls.includes('over')).length;
+}
+
+// 上限に達したか。x-total が無い・読めないときは返ってきた件数で判断する
+function reachedLimit(xTotal, n, limit = ASSIGNED_LIMIT) {
+  return /^\d+$/.test(xTotal ?? '') ? Number(xTotal) > limit : n >= limit;
+}
+
+// 担当の取得結果（Promise.allSettled の 1 要素）→ state への差分。
+// 失敗時は前回の一覧を残すため、assigned には触らない
+function assignedPatch(result, lang = 'ja') {
+  if (result.status === 'rejected') {
+    return { assignedError: tr(lang, 'errAssigned', { msg: result.reason?.message ?? String(result.reason) }) };
+  }
+  const { items, xTotal } = result.value;
+  return { assigned: items, assignedLimited: reachedLimit(xTotal, items.length), assignedError: null };
+}
+
 // ---------- 表示用の文字列 ----------
+// 担当タブのラベル。件数は全リポジトリの合計で、絞り込みの影響を受けない
+function assignedTabLabel(items, opts = {}) {
+  const { lang = 'ja' } = opts;
+  if (!items.length) return tr(lang, 'tabAssigned');
+  const over = countOverdue(items, opts);
+  return over
+    ? tr(lang, 'assignedTabOver', { n: items.length, m: over })
+    : tr(lang, 'assignedTab', { n: items.length });
+}
+
+
 // 'YYYY-MM-DD' → 表示文字列と色クラス（超過: 赤 / 3日以内: 橙）
 // opts = { prefix, today, lang }。today は注入可能。既定は実行日のため、テストでは固定の日付を渡す
 function dueInfo(date, opts = {}) {
@@ -155,7 +214,8 @@ function ago(iso, opts = {}) {
 // ブラウザでは module が無いのでこの行は効かない。Node（テスト）だけ通る
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
-    LANGS, CONFIG_DEFAULTS, TYPES, UI, ACTIONS, tr, actionLabel,
+    LANGS, CONFIG_DEFAULTS, TYPES, UI, ACTIONS, WORK_ITEM_TYPES, ASSIGNED_LIMIT, tr, actionLabel,
     apiUrl, mergeConfig, intervalSec, freshTodos, todoRepo, issueRepo, shortName, dueInfo, ago,
+    todoRef, workItemType, workItemTypeLabel, splitByDue, countOverdue, reachedLimit, assignedPatch, assignedTabLabel,
   };
 }

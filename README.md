@@ -8,6 +8,7 @@ NMS は、GitLab の To-Do を Windows のタスクバーに件数バッジで�
 
 > **English:** A tiny Windows tray app that shows your GitLab To-Do count as a taskbar badge.
 > Works with GitLab.com and self-managed GitLab. Click an item to open it in your browser.
+> The Assigned tab lists the work items assigned to you (issues, incidents, test cases and tasks), nearest due date first, with undated items last.
 
 <p>
   <img src="docs/screenshot-list.png" width="380" alt="通知タブ（日本語）: To-Do の一覧と、リポジトリ・種別の絞り込み">
@@ -32,11 +33,12 @@ NMS は、GitLab の To-Do を Windows のタスクバーに件数バッジで�
 - **一覧でプレビュー:** 種別・タイトル・リポジトリ・作成者・経過時間を一覧で確認できます。クリックすると既定のブラウザで MR / Issue が開きます。
 - **その場で完了:** 「完了」ボタンで、GitLab 上の To-Do を完了にできます。
 - **絞り込み:** リポジトリ別のタブと、種別（アサイン、メンション、レビュー依頼など）のボタンで絞り込めます。
-- **期限の確認:** アサインの通知には期限を表示します。「期限」タブでは、自分にアサインされた Issue を期限が近い順に並べます。期限を過ぎたものは赤、3 日以内のものは橙です。
+- **担当の確認:** 「担当」タブでは、自分にアサインされた作業アイテム（Issue、インシデント、テストケース、タスク）を期限が近い順に並べます。期限のないものは末尾の「期限なし」の下に出ます。リポジトリと種別で絞り込めて、最大 100 件まで表示します。タスクバーのバッジとトレイの件数には含めません。
+- **期限の色分け:** アサインの通知と「担当」タブには期限を表示します。期限を過ぎたものは赤、3 日以内のものは橙です。
 - **新着のデスクトップ通知**と、**Windows ログイン時の自動起動**に対応しています。
 - **表示言語は日本語 / 英語**。設定タブで切り替えると、メニューや通知を含むアプリ全体の文言が変わります。
 
-表示する内容は、GitLab の画面右上にあるベルアイコン（To-Do リスト）と同じです。
+通知タブに表示する内容は、GitLab の画面右上にあるベルアイコン（To-Do リスト）と同じです。
 
 ## 動作環境 (Requirements)
 
@@ -105,7 +107,7 @@ GitLab の仕様です。To-Do は「見たかどうか」ではなく「対応�
 |---|---|
 | `GET /todos?state=pending` | 通知の一覧と件数 |
 | `POST /todos/:id/mark_as_done` | 「完了」ボタン |
-| `GET /issues?scope=assigned_to_me&state=opened` | 期限タブ |
+| `GET /issues?scope=assigned_to_me&state=opened` | 担当タブ（Issue、インシデント、テストケース、タスク） |
 
 - **テレメトリ（利用状況の送信）はありません**
 - **自動更新はありません**。更新は Releases を自分で確認します
@@ -173,14 +175,15 @@ npm run test:gui    # アプリを実起動して画面を検証（スクショ�
 npm run mock        # モック GitLab だけ起動（http://127.0.0.1:8080 / glpat-mock-token）
 ```
 
-本物の GitLab の代わりに `scripts/mock-gitlab.js` が API のふりをします。通知 4 件とアサイン Issue が入っていて、
-期限切れ（赤）・3日以内（橙）・マイルストーン期限まで再現するので、トークンを本物に切り替えずに画面を確認できます。
+本物の GitLab の代わりに `scripts/mock-gitlab.js` が API のふりをします。通知 4 件とアサインされた作業アイテム 7 件が入っていて、
+期限切れ（赤）・3日以内（橙）・マイルストーン期限・期限なしまで再現するので、トークンを本物に切り替えずに画面を確認できます。
 
 - `scripts/gui-test.js` が、Chrome DevTools Protocol（依存ゼロの自作クライアント）で画面を読み、
-  件数・色分け・絞り込み・「完了」ボタン・新着のポーリングを 20 項目チェックします
+  件数・色分け・絞り込み・「完了」ボタン・新着のポーリング・担当タブ・取得失敗時の動きをチェックします
 - `scripts/mock-config.js` が、テスト用の設定を本番と同じ DPAPI 暗号化で書き込みます
 - 手動で見るだけなら `npm run mock` を別に起動して、設定に URL とトークンを入れるだけ。
-  `curl -X POST http://127.0.0.1:8080/__push` で新着通知も再現できます
+  `curl -X POST http://127.0.0.1:8080/__push` で新着通知も再現できます。
+  `curl "http://127.0.0.1:8080/__fail?target=issues&status=500"` で担当の取得失敗を再現できます（`status=0` で解除）
 
 実行中はウィンドウが実際に映ります。`test:gui` は新着も送るので、最後にデスクトップ通知が出ます。
 
@@ -211,10 +214,10 @@ Electron 製です。画面は素の HTML/JS で、フレームワークは使�
 | `src/main.js` | ポーリング、GitLab API の呼び出し、タスクバーのバッジとトレイ、設定の保存 |
 | `src/lib.js` | 純粋な計算と翻訳テーブル（URL 組み立て、設定のマージ、期限の色分け、`tr()`）。`npm test` で検証する |
 | `src/preload.js` | 画面側に公開する IPC |
-| `src/index.html` / `src/renderer.js` | 一覧・期限・設定の画面、バッジ画像の描画 |
+| `src/index.html` / `src/renderer.js` | 通知・担当・設定の画面、バッジ画像の描画 |
 | `scripts/make-icon.js` | アイコンの生成（外部ライブラリなし） |
 
-使っている GitLab API は 3 つだけです（To-Do と Issue は、それぞれ最大 100 件まで取得します）。一覧と用途は [セキュリティとプライバシー](#セキュリティとプライバシー-security-and-privacy) に書いてあります。
+使っている GitLab API は 3 つだけです（To-Do と作業アイテムは、それぞれ最大 100 件まで取得します）。一覧と用途は [セキュリティとプライバシー](#セキュリティとプライバシー-security-and-privacy) に書いてあります。
 
 軽量化のため、GPU 処理とネットワーク処理を別プロセスにせず、メインプロセスに統合しています。
 
