@@ -143,7 +143,7 @@ test('shortName: 末尾の名前だけ残す', () => {
   assert.equal(shortName('group/sub/proj'), 'proj');
 });
 
-// ---------- 担当タブ ----------
+// ---------- 作業アイテムタブ ----------
 test('workItemType: issue_type が無ければ issue', () => {
   assert.equal(workItemType({ issue_type: 'task' }), 'task');
   assert.equal(workItemType({}), 'issue');
@@ -189,24 +189,24 @@ test('countOverdue: 期限なしは超過に数えない（今日までも超過
 test('assignedTabLabel: 合計と、あれば超過数', () => {
   const over = [{ due_date: '2026-11-01' }, { due_date: null }, {}];
   const noOver = [{ due_date: '2026-11-10' }, { due_date: null }];
-  assert.equal(assignedTabLabel(over, { today: TODAY }), '担当 3 (超過1)');
-  assert.equal(assignedTabLabel(over, { today: TODAY, lang: 'en' }), 'Assigned 3 (1 overdue)');
-  assert.equal(assignedTabLabel(noOver, { today: TODAY }), '担当 2');
-  assert.equal(assignedTabLabel(noOver, { today: TODAY, lang: 'en' }), 'Assigned 2');
-  assert.equal(assignedTabLabel([{}], { today: TODAY }), '担当 1');
+  assert.equal(assignedTabLabel(over, { today: TODAY }), '作業アイテム 3 (超過1)');
+  assert.equal(assignedTabLabel(over, { today: TODAY, lang: 'en' }), 'Work items 3 (1 overdue)');
+  assert.equal(assignedTabLabel(noOver, { today: TODAY }), '作業アイテム 2');
+  assert.equal(assignedTabLabel(noOver, { today: TODAY, lang: 'en' }), 'Work items 2');
+  assert.equal(assignedTabLabel([{}], { today: TODAY }), '作業アイテム 1');
 });
 
 test('assignedTabLabel: total があれば取得できた行数より優先する', () => {
   const over = [{ due_date: '2026-11-01' }, {}];
-  assert.equal(assignedTabLabel(over, { today: TODAY, total: 150 }), '担当 150 (超過1)');
-  assert.equal(assignedTabLabel(over, { today: TODAY, total: 150, lang: 'en' }), 'Assigned 150 (1 overdue)');
-  assert.equal(assignedTabLabel([{}], { today: TODAY, total: 150 }), '担当 150');
-  assert.equal(assignedTabLabel(over, { today: TODAY, total: null }), '担当 2 (超過1)');
+  assert.equal(assignedTabLabel(over, { today: TODAY, total: 150 }), '作業アイテム 150 (超過1)');
+  assert.equal(assignedTabLabel(over, { today: TODAY, total: 150, lang: 'en' }), 'Work items 150 (1 overdue)');
+  assert.equal(assignedTabLabel([{}], { today: TODAY, total: 150 }), '作業アイテム 150');
+  assert.equal(assignedTabLabel(over, { today: TODAY, total: null }), '作業アイテム 2 (超過1)');
 });
 
 test('assignedTabLabel: 0 件ならタブ名だけ', () => {
-  assert.equal(assignedTabLabel([]), '担当');
-  assert.equal(assignedTabLabel([], { lang: 'en' }), 'Assigned');
+  assert.equal(assignedTabLabel([]), '作業アイテム');
+  assert.equal(assignedTabLabel([], { lang: 'en' }), 'Work items');
 });
 
 test('reachedLimit: x-total があれば上限を超えたかで決まる', () => {
@@ -243,9 +243,9 @@ test('assignedPatch: 総数は x-total、無ければ返ってきた件数', () 
 
 test('assignedPatch: 失敗なら前回の一覧に触らず、部分的な失敗だと分かる文言を返す', () => {
   const failed = { status: 'rejected', reason: new Error('HTTP 500') };
-  assert.deepEqual(assignedPatch(failed), { assignedError: '担当の取得に失敗: HTTP 500（通知は更新しました）' });
+  assert.deepEqual(assignedPatch(failed), { assignedError: '作業アイテムの取得に失敗: HTTP 500（To-Do は更新しました）' });
   assert.deepEqual(assignedPatch(failed, 'en'),
-    { assignedError: 'Could not fetch assigned items: HTTP 500 (To-Dos are up to date)' });
+    { assignedError: 'Could not fetch work items: HTTP 500 (To-Dos are up to date)' });
 });
 
 test('assignedPatch: バッジの件数（count）を決して変えない', () => {
@@ -265,22 +265,22 @@ test('todoRef: MR は !、WorkItem を含むそれ以外は #', () => {
 
 // ---------- 翻訳 ----------
 test('tr: 言語で切り替わり、{n} を差し込む', () => {
-  assert.equal(tr('ja', 'tabList'), '通知');
-  assert.equal(tr('en', 'tabList'), 'Notifications');
+  assert.equal(tr('ja', 'tabList'), 'To-Do');
+  assert.equal(tr('en', 'tabList'), 'To-Do');
   assert.equal(tr('ja', 'statusCount', { n: 4 }), '4 件');
   assert.equal(tr('en', 'statusCount', { n: 4 }), '4 to-dos');
-  assert.equal(tr('en', 'assignedTabOver', { n: 3, m: 1 }), 'Assigned 3 (1 overdue)');
+  assert.equal(tr('en', 'assignedTabOver', { n: 3, m: 1 }), 'Work items 3 (1 overdue)');
   assert.equal(tr('ja', 'assignedLimit', { n: 100 }), '100 件まで表示');
   assert.equal(tr('en', 'assignedLimit', { n: 100 }), 'Showing the first 100');
 });
 
 test('tr: 未知の lang は日本語、未知の key はそのまま返す', () => {
-  assert.equal(tr('fr', 'tabList'), '通知');
+  assert.equal(tr('fr', 'tabAssigned'), '作業アイテム');
   assert.equal(tr('en', 'shikatanai_key'), 'shikatanai_key');
 });
 
 test('tr: 差し込み変数が無くても壊れない', () => {
-  assert.equal(tr('en', 'emptyTodos'), 'No notifications');
+  assert.equal(tr('en', 'emptyTodos'), 'No To-Dos');
 });
 
 test('actionLabel: GitLab の action_name をラベルにする', () => {

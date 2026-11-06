@@ -52,7 +52,7 @@ function countBy(items, keyOf) {
   return m;
 }
 
-// ---------- 通知タブ ----------
+// ---------- To-Do タブ ----------
 function renderTodos(todos, error) {
   renderChips($('#todoRepos'), 'todoRepo', countBy(todos, t => todoRepo(t, lang)), shortName, p => p);
   const inRepo = todos.filter(t => filter.todoRepo === 'all' || todoRepo(t, lang) === filter.todoRepo);
@@ -95,7 +95,7 @@ function dueInfoOr(t, lang) {
   return null;
 }
 
-// ---------- 担当タブ ----------
+// ---------- 作業アイテムタブ ----------
 function assignedRow(i) {
   const li = el('li');
   const main = el('div', 'main');

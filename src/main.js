@@ -24,10 +24,10 @@ let timer = null;
 let quitting = false;
 let config = { ...DEFAULTS, token: '' };
 let knownIds = null; // 初回取得ではデスクトップ通知を出さない
-// count は To-Do だけの件数（バッジとトレイ用）。担当の件数は混ぜない
+// count は To-Do だけの件数（バッジとトレイ用）。作業アイテムの件数は混ぜない
 let state = { todos: [], assigned: [], assignedLimited: false, assignedTotal: null, assignedError: null, count: 0, error: null, updatedAt: null, loading: false };
 let pollSeq = 0;      // poll の通し番号
-let assignedSeq = 0;  // 担当の結果を反映した最新の poll の番号
+let assignedSeq = 0;  // 作業アイテムの結果を反映した最新の poll の番号
 
 // 初回起動（設定が無いとき）だけ OS の言語を見る。ja 以外なら英語で出す
 const guessLang = () => (String(app.getLocale() || '').toLowerCase().startsWith('ja') ? 'ja' : 'en');
@@ -91,7 +91,7 @@ async function fetchTodos() {
   return { todos, count: Number(res.headers.get('x-total')) || todos.length };
 }
 
-// 担当タブ用: 自分にアサインされた未完了の作業アイテム。issue_type を指定しなければタスクなども返る
+// 作業アイテムタブ用: 自分にアサインされた未完了の作業アイテム。issue_type を指定しなければタスクなども返る
 async function fetchAssigned() {
   // 応答が来ないときも部分的な失敗として扱えるよう、待つ時間を区切る
   const signal = AbortSignal.timeout(ASSIGNED_TIMEOUT_MS);
@@ -113,8 +113,8 @@ async function poll() {
     return;
   }
   setState({ loading: true });
-  // 同時に取りにいくが、担当の結果は To-Do を反映してから受ける。
-  // 担当が遅くても失敗しても、To-Do の表示・バッジ・通知は待たせない
+  // 同時に取りにいくが、作業アイテムの結果は To-Do を反映してから受ける。
+  // 作業アイテムが遅くても失敗しても、To-Do の表示・バッジ・通知は待たせない
   const assignedFetch = Promise.allSettled([fetchAssigned()]);
   try {
     const { todos, count } = await fetchTodos();

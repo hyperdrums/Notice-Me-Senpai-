@@ -157,8 +157,8 @@ let m = null;
   console.log('アプリ起動，画面に接続');
 
   // 3) モックのデータが描画される
-  await waitFor('通知一覧 4 件', `document.querySelectorAll('#todos li').length === 4`);
-  check('通知タブに 4 件描画', (await count('#todos li')) === 4);
+  await waitFor('To-Do 一覧 4 件', `document.querySelectorAll('#todos li').length === 4`);
+  check('To-Do タブに 4 件描画', (await count('#todos li')) === 4);
 
   const status = await evl(`document.querySelector('#status').textContent`);
   check('ヘッダに件数と更新時刻', /4 件/.test(status), status);
@@ -185,16 +185,16 @@ let m = null;
   const dues = await evl(`[...document.querySelectorAll('#todos .due')].map(e => e.textContent).join(' | ')`);
   check('マイルストーン期限も表示', dues.includes('MS期限'), dues);
 
-  // 5) 担当タブ
+  // 5) 作業アイテムタブ
   const ROWS = '#assignedItems li:not(.separator)';
   const q = (await m.snapshot()).issuesQuery;
-  check('担当の取得条件（自分の未完了を期限順に 100 件）',
+  check('作業アイテムの取得条件（自分の未完了を期限順に 100 件）',
     q?.scope === 'assigned_to_me' && q?.state === 'opened' && q?.order_by === 'due_date' && q?.sort === 'asc' && q?.per_page === '100',
     JSON.stringify(q));
   const assignedTab = await evl(`document.querySelector('#assignedTab').textContent`);
-  check('担当タブのラベル（超過数込み）', assignedTab === '担当 7 (超過1)', assignedTab);
+  check('作業アイテムタブのラベル（超過数込み）', assignedTab === '作業アイテム 7 (超過1)', assignedTab);
   await click('.tab[data-view=assigned]');
-  await waitFor('担当一覧 7 件', `document.querySelectorAll(${JSON.stringify(ROWS)}).length === 7`);
+  await waitFor('作業アイテム一覧 7 件', `document.querySelectorAll(${JSON.stringify(ROWS)}).length === 7`);
   check('期限なしも含めて表示', (await count(ROWS)) === 7);
   const order = await evl(`[...document.querySelectorAll('#assignedItems .title')].map(e => e.textContent.match(/#\\d+/)[0]).join('|')`);
   check('期限が近い順で期限なしは末尾', order === '#17|#22|#25|#23|#24|#26|#27', order);
@@ -205,12 +205,12 @@ let m = null;
   const typeTags = await evl(`[...document.querySelectorAll('#assignedItems .tag')].map(e => e.textContent).join(',')`);
   check('行頭に種別タグ（issue_type なしは Issue）',
     typeTags === 'Issue,Issue,タスク,Issue,Issue,タスク,インシデント', typeTags);
-  check('担当タブに完了ボタンがない', (await count('#assignedItems button')) === 0);
+  check('作業アイテムタブに完了ボタンがない', (await count('#assignedItems button')) === 0);
   const dueCls = await evl(`[...document.querySelectorAll(${JSON.stringify(ROWS)})].map(li => li.querySelector('.due')?.className ?? '-').join('|')`);
-  check('担当の期限の色分け（期限なしは期限を出さない）', dueCls === 'due over|due soon|due soon|due|-|-|-', dueCls);
+  check('作業アイテムの期限の色分け（期限なしは期限を出さない）', dueCls === 'due over|due soon|due soon|due|-|-|-', dueCls);
   const dueTexts = await evl(`[...document.querySelectorAll('#assignedItems .due')].map(e => e.textContent).join(' | ')`);
-  check('担当の期限の文言', /2日超過/.test(dueTexts) && /あと1日/.test(dueTexts) && /あと3日/.test(dueTexts) && /あと14日/.test(dueTexts), dueTexts);
-  check('担当に NaN が出ない', !(await evl(`document.querySelector('#assignedItems').textContent`)).includes('NaN'));
+  check('作業アイテムの期限の文言', /2日超過/.test(dueTexts) && /あと1日/.test(dueTexts) && /あと3日/.test(dueTexts) && /あと14日/.test(dueTexts), dueTexts);
+  check('作業アイテムに NaN が出ない', !(await evl(`document.querySelector('#assignedItems').textContent`)).includes('NaN'));
   await click(ROWS);
   await waitUntil('行のクリックで web_url を開く', async () => (await evlMain('globalThis.__opened.length')) === 1);
   const opened = await evlMain('globalThis.__opened[0]');
@@ -223,7 +223,7 @@ let m = null;
   await waitFor('タスクのみ', `document.querySelectorAll(${JSON.stringify(ROWS)}).length === 2`);
   check('種別で絞り込み', (await count(ROWS)) === 2);
   const tabFiltered = await evl(`document.querySelector('#assignedTab').textContent`);
-  check('絞り込んでもタブの件数は合計のまま', tabFiltered === '担当 7 (超過1)', tabFiltered);
+  check('絞り込んでもタブの件数は合計のまま', tabFiltered === '作業アイテム 7 (超過1)', tabFiltered);
   await clickChip('#assignedRepos', 'proj-c');
   await waitFor('proj-c のみ', `document.querySelectorAll(${JSON.stringify(ROWS)}).length === 1`);
   check('種別が 1 つなら種別の行を隠す', (await count('#assignedTypes .chip')) === 0);
@@ -270,7 +270,7 @@ let m = null;
   await waitFor('バッジ画像を描画', `window.__draws >= 2`, 10000);
   const draws = await evl(`window.__draws`);
   check('バッジ画像を描画して main に渡す', draws >= 2, `${draws} 回描画`);
-  // 担当は 7 件あるが、バッジとトレイの件数は To-Do だけ
+  // 作業アイテムは 7 件あるが、バッジとトレイの件数は To-Do だけ
   const badge = await evl(`window.__badge`);
   check('バッジは To-Do の件数だけ', badge === '3', String(badge));
   const stateCount = await evl(`window.api.getState().then(s => s.count)`);
@@ -284,26 +284,26 @@ let m = null;
   check('新着が先頭に表示', fresh.includes('モックから押した新着'), fresh);
   await shot('04-new-arrival.png');
 
-  // 9-2) 担当だけ取得に失敗しても To-Do は動き続ける
+  // 9-2) 作業アイテムだけ取得に失敗しても To-Do は動き続ける
   const errorText = `document.querySelector('#error').textContent`;
   const errorShown = `document.querySelector('#error').style.display === 'block'`;
   const errorHidden = `document.querySelector('#error').style.display === 'none'`;
   await m.fail('issues', 500);
   await m.push();
   await click('#refresh');
-  await waitFor('担当の失敗が表示される', `${errorText}.includes('担当の取得に失敗')`);
+  await waitFor('作業アイテムの失敗が表示される', `${errorText}.includes('作業アイテムの取得に失敗')`);
   const partialErr = await evl(errorText);
-  check('担当の失敗だと分かるメッセージ', partialErr.includes('HTTP 500'), partialErr);
-  check('担当が失敗しても To-Do は更新', (await count('#todos li')) === 5);
-  check('担当が失敗しても To-Do のバッジは更新', (await evl(`window.__badge`)) === '5');
-  check('担当が失敗しても新着を通知', (await shownBodies()).includes('モックから押した新着 2'));
-  check('担当の前回の一覧が残る', (await count(ROWS)) === 7);
+  check('作業アイテムの失敗だと分かるメッセージ', partialErr.includes('HTTP 500'), partialErr);
+  check('作業アイテムが失敗しても To-Do は更新', (await count('#todos li')) === 5);
+  check('作業アイテムが失敗しても To-Do のバッジは更新', (await evl(`window.__badge`)) === '5');
+  check('作業アイテムが失敗しても新着を通知', (await shownBodies()).includes('モックから押した新着 2'));
+  check('作業アイテムの前回の一覧が残る', (await count(ROWS)) === 7);
   await shot('06-assigned-failed.png');
 
   await m.fail('issues', 0);
   await click('#refresh');
-  await waitFor('担当の失敗が消える', errorHidden);
-  check('次の成功で担当のエラーが消える', (await evl(errorText)) === '');
+  await waitFor('作業アイテムの失敗が消える', errorHidden);
+  check('次の成功で作業アイテムのエラーが消える', (await evl(errorText)) === '');
 
   // 9-3) To-Do の失敗は従来どおり（画面の一覧はそのまま、エラーを表示）
   await m.fail('todos', 500);
@@ -317,14 +317,14 @@ let m = null;
   await waitFor('To-Do の失敗が消える', errorHidden);
   check('次の成功で To-Do のエラーが消える', (await evl(errorText)) === '');
 
-  // 担当の失敗に続いて To-Do も失敗したら、「通知は更新しました」を残さない
+  // 作業アイテムの失敗に続いて To-Do も失敗したら、「To-Do は更新しました」を残さない
   await m.fail('issues', 500);
   await click('#refresh');
-  await waitFor('担当の失敗が表示される', `${errorText}.includes('担当の取得に失敗')`);
+  await waitFor('作業アイテムの失敗が表示される', `${errorText}.includes('作業アイテムの取得に失敗')`);
   await m.fail('todos', 500);
   await click('#refresh');
   await waitFor('To-Do の失敗だけになる', `${errorText} === '取得失敗: HTTP 500'`);
-  await sleep(500);   // 遅れて届く担当の失敗で上書きされないことも見る
+  await sleep(500);   // 遅れて届く作業アイテムの失敗で上書きされないことも見る
   const bothErr = await evl(errorText);
   check('両方失敗したら To-Do の失敗だけ表示', bothErr === '取得失敗: HTTP 500', bothErr);
   await m.fail('issues', 0);
@@ -343,35 +343,35 @@ let m = null;
   check('上限のお知らせ', limitText === '100 件まで表示', limitText);
   check('取得するのは 100 件まで', (await count(ROWS)) === 100);
   const totalLabel = await evl(tabText);
-  check('タブの件数は x-total の総数', totalLabel === '担当 150 (超過1)', totalLabel);
+  check('タブの件数は x-total の総数', totalLabel === '作業アイテム 150 (超過1)', totalLabel);
   // x-total が無くても、100 件返ってきたら上限とみなす
   await m.setAssignedTotal('none');
   await click('#refresh');
-  await waitFor('x-total なしの件数', `${tabText} === '担当 100 (超過1)'`);
+  await waitFor('x-total なしの件数', `${tabText} === '作業アイテム 100 (超過1)'`);
   check('x-total なしで 100 件ならお知らせを出す', !(await evl(limitHidden)));
   await m.setAssignedCount(null);
   await click('#refresh');
-  await waitFor('x-total なしで 7 件', `${tabText} === '担当 7 (超過1)'`);
+  await waitFor('x-total なしで 7 件', `${tabText} === '作業アイテム 7 (超過1)'`);
   check('x-total なしで 100 件未満ならお知らせなし', await evl(limitHidden));
   await m.setAssignedTotal(null);
   await click('#refresh');
   await waitFor('上限のお知らせが消える', limitHidden);
 
-  // 9-5) 担当が応答しなくても To-Do は待たされず、時間切れで部分的な失敗になる
+  // 9-5) 作業アイテムが応答しなくても To-Do は待たされず、時間切れで部分的な失敗になる
   await m.hangIssues(true);
   await m.push();
   await click('#refresh');
-  await waitFor('担当を待たずに To-Do が更新', `document.querySelectorAll('#todos li').length === 6 && /6 件/.test(document.querySelector('#status').textContent)`, 10000);
-  check('担当が応答しなくても To-Do とヘッダは更新', true);
-  check('担当が応答しなくても To-Do のバッジは更新', (await evl(`window.__badge`)) === '6');
-  check('担当が応答しなくても新着を通知', (await shownBodies()).includes('モックから押した新着 3'));
-  await waitFor('担当の時間切れが表示される', `${errorText}.includes('担当の取得に失敗')`, 45000);
+  await waitFor('作業アイテムを待たずに To-Do が更新', `document.querySelectorAll('#todos li').length === 6 && /6 件/.test(document.querySelector('#status').textContent)`, 10000);
+  check('作業アイテムが応答しなくても To-Do とヘッダは更新', true);
+  check('作業アイテムが応答しなくても To-Do のバッジは更新', (await evl(`window.__badge`)) === '6');
+  check('作業アイテムが応答しなくても新着を通知', (await shownBodies()).includes('モックから押した新着 3'));
+  await waitFor('作業アイテムの時間切れが表示される', `${errorText}.includes('作業アイテムの取得に失敗')`, 45000);
   const timeoutErr = await evl(errorText);
-  check('担当の時間切れは部分的な失敗', timeoutErr === '担当の取得に失敗: 応答がありません（通知は更新しました）', timeoutErr);
-  check('担当の時間切れでも前回の一覧が残る', (await count(ROWS)) === 7);
+  check('作業アイテムの時間切れは部分的な失敗', timeoutErr === '作業アイテムの取得に失敗: 応答がありません（To-Do は更新しました）', timeoutErr);
+  check('作業アイテムの時間切れでも前回の一覧が残る', (await count(ROWS)) === 7);
   await m.hangIssues(false);
   await click('#refresh');
-  await waitFor('担当の時間切れが消える', errorHidden);
+  await waitFor('作業アイテムの時間切れが消える', errorHidden);
   check('次の成功で時間切れのエラーが消える', (await evl(errorText)) === '');
 
   // 10) preload の公開面
@@ -390,9 +390,9 @@ let m = null;
   check('既定は日本語', (await evl(`${sel}.value`)) === 'ja');
 
   await evl(`${sel}.value = 'en'; document.querySelector('#form').requestSubmit();`);
-  await waitFor('英語に切り替わる', `document.querySelector('.tab[data-view=list]').textContent === 'Notifications'`, 20000);
+  await waitFor('英語に切り替わる', `document.querySelector('.tab[data-view=settings]').textContent === 'Settings'`, 20000);
   const tabs = await evl(`[...document.querySelectorAll('.tab')].map(e => e.textContent).join('|')`);
-  check('タブが英語になる', tabs.startsWith('Notifications|') && tabs.endsWith('|Settings'), tabs);
+  check('タブが英語になる', tabs.startsWith('To-Do|Work items') && tabs.endsWith('|Settings'), tabs);
   const chipsEn = await evl(`[...document.querySelectorAll('#todoRepos .chip')].map(e => e.textContent).join('|')`);
   check('チップが英語（All / プロジェクト名）', chipsEn.startsWith('All '), chipsEn);
   const tagsEn = await evl(`[...document.querySelectorAll('#todos .tag')].map(e => e.textContent).join(',')`);
@@ -404,11 +404,11 @@ let m = null;
   const dueEn = await evl(`[...document.querySelectorAll('#todos .due')].map(e => e.textContent).join(' | ')`);
   check('期限表示が英語', dueEn.includes('overdue') && dueEn.includes('Milestone'), dueEn);
   const assignedEn = await evl(`document.querySelector('#assignedTab').textContent`);
-  check('担当タブのラベルが英語', assignedEn === 'Assigned 7 (1 overdue)', assignedEn);
+  check('作業アイテムタブのラベルが英語', assignedEn === 'Work items 7 (1 overdue)', assignedEn);
   const sepEn = await evl(`document.querySelector('#assignedItems .separator').textContent`);
   check('区切り行が英語', sepEn === 'No due date', sepEn);
   const assignedDueEn = await evl(`[...document.querySelectorAll('#assignedItems .due')].map(e => e.textContent).join(' | ')`);
-  check('担当の期限が英語', assignedDueEn.includes('2d overdue') && assignedDueEn.includes('in 1d'), assignedDueEn);
+  check('作業アイテムの期限が英語', assignedDueEn.includes('2d overdue') && assignedDueEn.includes('in 1d'), assignedDueEn);
   const typeTagsEn = await evl(`[...document.querySelectorAll('#assignedItems .tag')].map(e => e.textContent).join(',')`);
   check('種別タグが英語', typeTagsEn === 'Issue,Issue,Task,Issue,Issue,Task,Incident', typeTagsEn);
   const limitEn = await evl(`document.querySelector('#assignedLimit').textContent`);
@@ -423,7 +423,7 @@ let m = null;
 
   await click('.tab[data-view=settings]');
   await evl(`${sel}.value = 'ja'; document.querySelector('#form').requestSubmit();`);
-  await waitFor('日本語に戻る', `document.querySelector('.tab[data-view=list]').textContent === '通知'`, 20000);
+  await waitFor('日本語に戻る', `document.querySelector('.tab[data-view=settings]').textContent === '設定'`, 20000);
   check('日本語に戻せる', true);
 })().catch(e => {
   check(`例外: ${e.message}`, false);

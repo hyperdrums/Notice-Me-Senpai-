@@ -10,12 +10,12 @@ const CONFIG_DEFAULTS = { baseUrl: '', intervalSec: 60, notify: true, insecure: 
 const UI = {
   ja: {
     appTitle: 'Notice Me, Senpai!',
-    tabList: '通知', tabAssigned: '担当', tabSettings: '設定', refresh: '更新',
+    tabList: 'To-Do', tabAssigned: '作業アイテム', tabSettings: '設定', refresh: '更新',
     loading: '取得中…', statusCount: '{n} 件',
-    emptyTodos: '通知はありません', emptyAssigned: 'アサインされた作業アイテムはありません',
+    emptyTodos: 'To-Do はありません', emptyAssigned: 'アサインされた作業アイテムはありません',
     done: '完了', all: 'すべて', noneRepo: '(なし)',
     duePrefix: '期限', msDuePrefix: 'MS期限', dueToday: '今日まで', noDueDate: '期限なし',
-    dueIn: 'あと{n}日', dueOver: '{n}日超過', assignedTab: '担当 {n}', assignedTabOver: '担当 {n} (超過{m})',
+    dueIn: 'あと{n}日', dueOver: '{n}日超過', assignedTab: '作業アイテム {n}', assignedTabOver: '作業アイテム {n} (超過{m})',
     assignedLimit: '{n} 件まで表示',
     agoNow: 'たった今', agoMin: '{n}分前', agoHour: '{n}時間前', agoDay: '{n}日前',
     lblBaseUrl: 'GitLab URL',
@@ -32,16 +32,16 @@ const UI = {
     errNotConfigured: '未設定です。設定タブで URL とトークンを入力してください。',
     errInvalidToken: 'トークンが無効です (401)',
     errFetch: '取得失敗: {msg}', errDone: '完了処理に失敗: {msg}',
-    errAssigned: '担当の取得に失敗: {msg}（通知は更新しました）', errBadResponse: '応答の形式が不正です', errTimeout: '応答がありません',
+    errAssigned: '作業アイテムの取得に失敗: {msg}（To-Do は更新しました）', errBadResponse: '応答の形式が不正です', errTimeout: '応答がありません',
   },
   en: {
     appTitle: 'Notice Me, Senpai!',
-    tabList: 'Notifications', tabAssigned: 'Assigned', tabSettings: 'Settings', refresh: 'Refresh',
+    tabList: 'To-Do', tabAssigned: 'Work items', tabSettings: 'Settings', refresh: 'Refresh',
     loading: 'Loading…', statusCount: '{n} to-dos',
-    emptyTodos: 'No notifications', emptyAssigned: 'No work items assigned to you',
+    emptyTodos: 'No To-Dos', emptyAssigned: 'No work items assigned to you',
     done: 'Done', all: 'All', noneRepo: '(none)',
     duePrefix: 'Due', msDuePrefix: 'Milestone', dueToday: 'today', noDueDate: 'No due date',
-    dueIn: 'in {n}d', dueOver: '{n}d overdue', assignedTab: 'Assigned {n}', assignedTabOver: 'Assigned {n} ({m} overdue)',
+    dueIn: 'in {n}d', dueOver: '{n}d overdue', assignedTab: 'Work items {n}', assignedTabOver: 'Work items {n} ({m} overdue)',
     assignedLimit: 'Showing the first {n}',
     agoNow: 'just now', agoMin: '{n}m ago', agoHour: '{n}h ago', agoDay: '{n}d ago',
     lblBaseUrl: 'GitLab URL',
@@ -58,7 +58,7 @@ const UI = {
     errNotConfigured: 'Not configured. Set the URL and token in the Settings tab.',
     errInvalidToken: 'Invalid token (401)',
     errFetch: 'Fetch failed: {msg}', errDone: 'Could not mark as done: {msg}',
-    errAssigned: 'Could not fetch assigned items: {msg} (To-Dos are up to date)', errBadResponse: 'Unexpected response format', errTimeout: 'No response',
+    errAssigned: 'Could not fetch work items: {msg} (To-Dos are up to date)', errBadResponse: 'Unexpected response format', errTimeout: 'No response',
   },
 };
 
@@ -82,16 +82,16 @@ const ACTIONS = {
 
 const TYPES = { MergeRequest: 'MR', Issue: 'Issue', WorkItem: 'Work item', Commit: 'Commit', Epic: 'Epic', DesignManagement__Design: 'Design' };
 
-// 担当タブの issue_type のラベル
+// 作業アイテムタブの issue_type のラベル
 const WORK_ITEM_TYPES = {
   ja: { issue: 'Issue', incident: 'インシデント', test_case: 'テストケース', task: 'タスク' },
   en: { issue: 'Issue', incident: 'Incident', test_case: 'Test case', task: 'Task' },
 };
 
-// 担当の取得件数の上限（per_page）
+// 作業アイテムの取得件数の上限（per_page）
 const ASSIGNED_LIMIT = 100;
 
-// 担当の取得を待つ上限（ミリ秒）
+// 作業アイテムの取得を待つ上限（ミリ秒）
 const ASSIGNED_TIMEOUT_MS = 30000;
 
 // 翻訳。lang が無ければ日本語、key が無ければ key をそのまま返す
@@ -168,7 +168,7 @@ function reachedLimit(xTotal, n, limit = ASSIGNED_LIMIT) {
   return total !== null ? total > limit : n >= limit;
 }
 
-// 担当の取得結果（Promise.allSettled の 1 要素）→ state への差分。
+// 作業アイテムの取得結果（Promise.allSettled の 1 要素）→ state への差分。
 // 失敗時は前回の一覧を残すため、assigned には触らない
 function assignedPatch(result, lang = 'ja') {
   if (result.status === 'rejected') {
@@ -179,7 +179,7 @@ function assignedPatch(result, lang = 'ja') {
 }
 
 // ---------- 表示用の文字列 ----------
-// 担当タブのラベル。件数は全リポジトリの合計で、絞り込みの影響を受けない。
+// 作業アイテムタブのラベル。件数は全リポジトリの合計で、絞り込みの影響を受けない。
 // total は上限で切られる前の総数（x-total）。超過数は取得できた分だけで数える
 function assignedTabLabel(items, opts = {}) {
   const { lang = 'ja', total } = opts;

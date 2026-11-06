@@ -8,11 +8,11 @@ NMS は、GitLab の To-Do を Windows のタスクバーに件数バッジで�
 
 > **English:** A tiny Windows tray app that shows your GitLab To-Do count as a taskbar badge.
 > Works with GitLab.com and self-managed GitLab. Click an item to open it in your browser.
-> The Assigned tab lists the work items assigned to you (issues, incidents, test cases and tasks), nearest due date first, with undated items last.
+> The Work items tab lists the work items assigned to you (issues, incidents, test cases and tasks), nearest due date first, with undated items last.
 
 <p>
-  <img src="docs/screenshot-list.png" width="380" alt="通知タブ（日本語）: To-Do の一覧と、リポジトリ・種別の絞り込み">
-  <img src="docs/screenshot-assigned.png" width="380" alt="担当タブ（英語 UI）: アサインされた作業アイテムを期限が近い順に表示">
+  <img src="docs/screenshot-list.png" width="380" alt="To-Do タブ（日本語）: To-Do の一覧と、リポジトリ・種別の絞り込み">
+  <img src="docs/screenshot-assigned.png" width="380" alt="作業アイテムタブ（英語 UI）: アサインされた作業アイテムを期限が近い順に表示">
 </p>
 
 <p align="center">右は UI を英語に切り替えた状態です。設定から日本語 / 英語を選べます（初回は OS の言語で自動決定）。</p>
@@ -33,12 +33,12 @@ NMS は、GitLab の To-Do を Windows のタスクバーに件数バッジで�
 - **一覧でプレビュー:** 種別・タイトル・リポジトリ・作成者・経過時間を一覧で確認できます。クリックすると既定のブラウザで MR / Issue が開きます。
 - **その場で完了:** 「完了」ボタンで、GitLab 上の To-Do を完了にできます。
 - **絞り込み:** リポジトリ別のタブと、種別（アサイン、メンション、レビュー依頼など）のボタンで絞り込めます。
-- **担当の確認:** 「担当」タブでは、自分にアサインされた作業アイテム（Issue、インシデント、テストケース、タスク）を期限が近い順に並べます。期限のないものは末尾の「期限なし」の下に出ます。リポジトリと種別で絞り込めて、最大 100 件まで表示します。タスクバーのバッジとトレイの件数には含めません。
-- **期限の色分け:** アサインの通知と「担当」タブには期限を表示します。期限を過ぎたものは赤、3 日以内のものは橙です。
+- **作業アイテムの確認:** 「作業アイテム」タブでは、自分にアサインされた作業アイテム（Issue、インシデント、テストケース、タスク）を期限が近い順に並べます。期限のないものは末尾の「期限なし」の下に出ます。リポジトリと種別で絞り込めて、最大 100 件まで表示します。タスクバーのバッジとトレイの件数には含めません。
+- **期限の色分け:** アサインの To-Do と「作業アイテム」タブには期限を表示します。期限を過ぎたものは赤、3 日以内のものは橙です。
 - **新着のデスクトップ通知**と、**Windows ログイン時の自動起動**に対応しています。
 - **表示言語は日本語 / 英語**。設定タブで切り替えると、メニューや通知を含むアプリ全体の文言が変わります。
 
-通知タブに表示する内容は、GitLab の画面右上にあるベルアイコン（To-Do リスト）と同じです。
+To-Do タブに表示する内容は、GitLab の画面右上にあるベルアイコン（To-Do リスト）と同じです。
 
 ## 動作環境 (Requirements)
 
@@ -107,7 +107,7 @@ GitLab の仕様です。To-Do は「見たかどうか」ではなく「対応�
 |---|---|
 | `GET /todos?state=pending` | 通知の一覧と件数 |
 | `POST /todos/:id/mark_as_done` | 「完了」ボタン |
-| `GET /issues?scope=assigned_to_me&state=opened` | 担当タブ（Issue、インシデント、テストケース、タスク） |
+| `GET /issues?scope=assigned_to_me&state=opened` | 作業アイテムタブ（Issue、インシデント、テストケース、タスク） |
 
 - **テレメトリ（利用状況の送信）はありません**
 - **自動更新はありません**。更新は Releases を自分で確認します
@@ -179,11 +179,11 @@ npm run mock        # モック GitLab だけ起動（http://127.0.0.1:8080 / gl
 期限切れ（赤）・3日以内（橙）・マイルストーン期限・期限なしまで再現するので、トークンを本物に切り替えずに画面を確認できます。
 
 - `scripts/gui-test.js` が、Chrome DevTools Protocol（依存ゼロの自作クライアント）で画面を読み、
-  件数・色分け・絞り込み・「完了」ボタン・新着のポーリング・担当タブ・取得失敗時の動きをチェックします
+  件数・色分け・絞り込み・「完了」ボタン・新着のポーリング・作業アイテムタブ・取得失敗時の動きをチェックします
 - `scripts/mock-config.js` が、テスト用の設定を本番と同じ DPAPI 暗号化で書き込みます
 - 手動で見るだけなら `npm run mock` を別に起動して、設定に URL とトークンを入れるだけ。
   `curl -X POST http://127.0.0.1:8080/__push` で新着通知も再現できます。
-  `curl "http://127.0.0.1:8080/__fail?target=issues&status=500"` で担当の取得失敗を再現できます（`status=0` で解除）
+  `curl "http://127.0.0.1:8080/__fail?target=issues&status=500"` で作業アイテムの取得失敗を再現できます（`status=0` で解除）
 
 実行中はウィンドウが実際に映ります。`test:gui` は新着も送るので、最後にデスクトップ通知が出ます。
 
@@ -214,7 +214,7 @@ Electron 製です。画面は素の HTML/JS で、フレームワークは使�
 | `src/main.js` | ポーリング、GitLab API の呼び出し、タスクバーのバッジとトレイ、設定の保存 |
 | `src/lib.js` | 純粋な計算と翻訳テーブル（URL 組み立て、設定のマージ、期限の色分け、`tr()`）。`npm test` で検証する |
 | `src/preload.js` | 画面側に公開する IPC |
-| `src/index.html` / `src/renderer.js` | 通知・担当・設定の画面、バッジ画像の描画 |
+| `src/index.html` / `src/renderer.js` | To-Do・作業アイテム・設定の画面、バッジ画像の描画 |
 | `scripts/make-icon.js` | アイコンの生成（外部ライブラリなし） |
 
 使っている GitLab API は 3 つだけです（To-Do と作業アイテムは、それぞれ最大 100 件まで取得します）。一覧と用途は [セキュリティとプライバシー](#セキュリティとプライバシー-security-and-privacy) に書いてあります。
