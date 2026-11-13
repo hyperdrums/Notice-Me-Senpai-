@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const {
-  LANGS, CONFIG_DEFAULTS, TYPES, UI, ACTIONS, ASSIGNED_LIMIT, tr, actionLabel,
+  LANGS, CONFIG_DEFAULTS, TYPES, UI, ACTIONS, WORK_ITEM_TYPES, ACTION_TONES, WORK_ITEM_TONES, ASSIGNED_LIMIT, tr, actionLabel, actionTone, workItemTone,
   apiUrl, mergeConfig, intervalSec, freshTodos, todoRepo, issueRepo, shortName, dueInfo, ago,
   todoRef, workItemType, workItemTypeLabel, splitByDue, countOverdue, reachedLimit, assignedPatch, assignedTabLabel,
 } = require('../src/lib.js');
@@ -319,6 +319,41 @@ test('TYPES: target_type の略称', () => {
   assert.equal(TYPES.Issue, 'Issue');
   assert.equal(TYPES.WorkItem, 'Work item');
   assert.equal(TYPES.Epic, 'Epic');
+});
+
+// ---------- ラベルの色 ----------
+test('ACTION_TONES: 翻訳を持つ action_name は必ず色を持つ', () => {
+  const missing = Object.keys(ACTIONS.ja).filter(k => !ACTION_TONES[k]);
+  assert.deepEqual(missing, [], `色が付いていない action_name: ${missing.join(', ')}`);
+});
+
+test('ACTION_TONES: 日英で action_name の一覧がズレていない', () => {
+  assert.deepEqual(Object.keys(ACTIONS.en).sort(), Object.keys(ACTIONS.ja).sort());
+});
+
+test('actionTone: 未知の action_name は無色', () => {
+  assert.equal(actionTone('review_requested'), 'review');
+  assert.equal(actionTone('assigned'), 'assign');
+  assert.equal(actionTone('mentioned'), 'mention');
+  assert.equal(actionTone('directly_addressed'), 'mention');
+  assert.equal(actionTone('build_failed'), 'danger');
+  assert.equal(actionTone('何らかの新しいアクション'), 'muted');
+});
+
+test('workItemTone: 翻訳を持つ種別は必ず色を持つ', () => {
+  const missing = Object.keys(WORK_ITEM_TYPES.ja).filter(k => !WORK_ITEM_TONES[k]);
+  assert.deepEqual(missing, [], `色が付いていない issue_type: ${missing.join(', ')}`);
+  assert.equal(workItemTone('incident'), 'danger');
+  assert.equal(workItemTone('unknown_type'), 'muted');
+});
+
+test('色クラスは CSS に明るい画面用と暗い画面用の両方がある', () => {
+  const css = fs.readFileSync(path.join(__dirname, '..', 'src', 'index.html'), 'utf8');
+  const tones = new Set([...Object.values(ACTION_TONES), ...Object.values(WORK_ITEM_TONES)]);
+  for (const tone of tones) {
+    const n = [...css.matchAll(new RegExp(`\\.t-${tone}\\s*\\{`, 'g'))].length;
+    assert.equal(n, 2, `.t-${tone} が CSS に ${n} 個しか無い（明るい画面用と暗い画面用の 2 つ必要）`);
+  }
 });
 
 // ---------- 言語設定が見つけられるか ----------

@@ -32,14 +32,18 @@ function el(tag, cls, text) {
 }
 
 // 選択肢を並べ、クリックで filter[key] を切り替える。消えた選択肢は 'all' に戻す
-function renderChips(container, key, entries, labelOf = v => v, titleOf = () => '') {
+// toneOf を渡すと、各選択肢の先頭にラベルと同じ色の点を付ける（色と絞り込みを対応させるため）
+function renderChips(container, key, entries, labelOf = v => v, titleOf = () => '', toneOf = null) {
   if (filter[key] !== 'all' && !entries.has(filter[key])) filter[key] = 'all';
   container.replaceChildren();
   if (entries.size === 0) return;
   const total = [...entries.values()].reduce((a, b) => a + b, 0);
   for (const [value, n] of [['all', total], ...entries]) {
     const label = value === 'all' ? tr(lang, 'all') : labelOf(value);
-    const c = el('span', `chip${filter[key] === value ? ' active' : ''}`, `${label} ${n}`);
+    const c = el('span', `chip${filter[key] === value ? ' active' : ''}`);
+    const tone = value === 'all' ? null : toneOf?.(value);
+    if (tone) c.append(el('i', `dot t-${tone}`));
+    c.append(`${label} ${n}`);
     c.title = value === 'all' ? '' : titleOf(value);
     c.onclick = () => { filter[key] = value; render(current); };
     container.append(c);
@@ -57,7 +61,9 @@ function renderTodos(todos, error) {
   renderChips($('#todoRepos'), 'todoRepo', countBy(todos, t => todoRepo(t, lang)), shortName, p => p);
   const inRepo = todos.filter(t => filter.todoRepo === 'all' || todoRepo(t, lang) === filter.todoRepo);
   const actionOf = t => actionLabel(lang, t.action_name);
-  renderChips($('#actions'), 'action', countBy(inRepo, actionOf));
+  // チップはラベルでまとめているので、色も引けるよう ラベル → 色 を覚えておく
+  const toneOfAction = new Map(inRepo.map(t => [actionOf(t), actionTone(t.action_name)]));
+  renderChips($('#actions'), 'action', countBy(inRepo, actionOf), undefined, () => '', v => toneOfAction.get(v));
   const shown = inRepo.filter(t => filter.action === 'all' || actionOf(t) === filter.action);
 
   const ul = $('#todos');
@@ -67,7 +73,7 @@ function renderTodos(todos, error) {
     const li = el('li');
     const main = el('div', 'main');
     const title = el('div', 'title');
-    title.append(el('span', 'tag', actionOf(t)));
+    title.append(el('span', `tag t-${actionTone(t.action_name)}`, actionOf(t)));
     const ref = todoRef(t);
     title.append(`${TYPES[t.target_type] ?? t.target_type}${ref ? ` ${ref}` : ''} ${t.target?.title ?? ''}`);
     const meta = el('div', 'meta');
@@ -100,7 +106,7 @@ function assignedRow(i) {
   const li = el('li');
   const main = el('div', 'main');
   const title = el('div', 'title');
-  title.append(el('span', 'tag', workItemTypeLabel(lang, workItemType(i))), `#${i.iid} ${i.title}`);
+  title.append(el('span', `tag t-${workItemTone(workItemType(i))}`, workItemTypeLabel(lang, workItemType(i))), `#${i.iid} ${i.title}`);
   const meta = el('div', 'meta');
   if (i.due_date) {
     const due = dueInfo(i.due_date, { lang });
@@ -118,7 +124,7 @@ function renderAssigned(items, limited, total, error) {
   const inRepo = items.filter(i => filter.assignedRepo === 'all' || issueRepo(i) === filter.assignedRepo);
   // 種別が 1 つ以下なら選ぶ意味がないので行ごと隠す（空の Map を渡すと選択も 'all' に戻る）
   const types = countBy(inRepo, workItemType);
-  renderChips($('#assignedTypes'), 'assignedType', types.size >= 2 ? types : new Map(), v => workItemTypeLabel(lang, v));
+  renderChips($('#assignedTypes'), 'assignedType', types.size >= 2 ? types : new Map(), v => workItemTypeLabel(lang, v), () => '', v => workItemTone(v));
   const shown = inRepo.filter(i => filter.assignedType === 'all' || workItemType(i) === filter.assignedType);
   $('#assignedTab').textContent = assignedTabLabel(items, { lang, total });
   $('#assignedLimit').classList.toggle('hidden', !limited);
