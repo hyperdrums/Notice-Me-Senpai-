@@ -6,6 +6,15 @@
 <title>Notice Me, Senpai!</title>
 <style>
   :root { color-scheme: light dark; --muted: #888; --line: #8884; --accent: #e24329; }
+  /* ラベルの色（明るい画面用）。暗い画面は下の prefers-color-scheme で差し替える */
+  .t-review { --tone: #6b3fc4; } .t-assign { --tone: #a85f08; } .t-mention { --tone: #1c5fd6; }
+  .t-warn { --tone: #9a4a12; } .t-danger { --tone: #c62828; } .t-ok { --tone: #16794c; }
+  .t-muted { --tone: #667085; }
+  @media (prefers-color-scheme: dark) {
+    .t-review { --tone: #b39ddb; } .t-assign { --tone: #ffb74d; } .t-mention { --tone: #8ab4ff; }
+    .t-warn { --tone: #ffab91; } .t-danger { --tone: #ef9a9a; } .t-ok { --tone: #81c784; }
+    .t-muted { --tone: #9aa0a6; }
+  }
   * { box-sizing: border-box; }
   body { margin: 0; font: 13px "Segoe UI", "Yu Gothic UI", sans-serif; }
   header { display: flex; gap: 8px; align-items: center; padding: 8px 10px; border-bottom: 1px solid var(--line); }
@@ -20,7 +29,11 @@
   li .main { flex: 1; min-width: 0; }
   li .title { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   li .meta, li .body { color: var(--muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .tag { display: inline-block; padding: 0 6px; border-radius: 3px; background: var(--accent); color: #fff; font-size: 11px; margin-right: 4px; }
+  .tag { display: inline-block; padding: 0 6px; border-radius: 3px; font-size: 11px; line-height: 15px; margin-right: 4px;
+         color: var(--tone, var(--muted)); background: color-mix(in srgb, var(--tone, #888) 15%, transparent);
+         border: 1px solid color-mix(in srgb, var(--tone, #888) 40%, transparent); }
+  .dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; vertical-align: middle;
+         margin-right: 5px; background: var(--tone, var(--muted)); }
   button { font: inherit; padding: 3px 10px; cursor: pointer; }
   li button { align-self: center; }
   .empty { padding: 24px; text-align: center; color: var(--muted); }

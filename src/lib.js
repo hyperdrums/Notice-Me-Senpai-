@@ -104,6 +104,27 @@ function tr(lang, key, vars) {
 // 未知の action_name は GitLab の生の値をそのまま出す
 const actionLabel = (lang, name) => ACTIONS[lang]?.[name] ?? ACTIONS.ja[name] ?? name;
 
+// ---------- ラベルの色 ----------
+// action_name を「対応の急ぎ具合」で色のグループに寄せる。CSS の .t-<名前> に対応させる
+//   review: レビュー依頼（主役）  assign: アサイン（期限と紐づく）  mention: 呼ばれた
+//   warn: 承認待ち  danger: 壊れている  ok: 済み  muted: 情報扱い
+const ACTION_TONES = {
+  review_requested: 'review',
+  assigned: 'assign',
+  mentioned: 'mention', directly_addressed: 'mention',
+  approval_required: 'warn',
+  build_failed: 'danger', unmergeable: 'danger', merge_train_removed: 'danger',
+  review_submitted: 'ok',
+  marked: 'muted', member_access_requested: 'muted',
+};
+
+// 未知の action_name は無色。色を付け忘れた項目もここ落ちするので、テストで網羅を確認する
+const actionTone = name => ACTION_TONES[name] ?? 'muted';
+
+// 作業アイテムの種別ごとの色
+const WORK_ITEM_TONES = { issue: 'mention', task: 'assign', incident: 'danger', test_case: 'ok' };
+const workItemTone = type => WORK_ITEM_TONES[type] ?? 'muted';
+
 // ---------- 設定 ----------
 // GitLab API の URL。baseUrl の末尾スラッシュを揃える
 function apiUrl(baseUrl, p) {
@@ -223,7 +244,7 @@ function ago(iso, opts = {}) {
 // ブラウザでは module が無いのでこの行は効かない。Node（テスト）だけ通る
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
-    LANGS, CONFIG_DEFAULTS, TYPES, UI, ACTIONS, WORK_ITEM_TYPES, ASSIGNED_LIMIT, ASSIGNED_TIMEOUT_MS, tr, actionLabel,
+    LANGS, CONFIG_DEFAULTS, TYPES, UI, ACTIONS, WORK_ITEM_TYPES, ACTION_TONES, WORK_ITEM_TONES, ASSIGNED_LIMIT, ASSIGNED_TIMEOUT_MS, tr, actionLabel, actionTone, workItemTone,
     apiUrl, mergeConfig, intervalSec, freshTodos, todoRepo, issueRepo, shortName, dueInfo, ago,
     todoRef, workItemType, workItemTypeLabel, splitByDue, countOverdue, reachedLimit, assignedPatch, assignedTabLabel,
   };

@@ -167,6 +167,20 @@ let m = null;
   const tags = await evl(`[...document.querySelectorAll('#todos .tag')].map(e => e.textContent).join(',')`);
   check('種別ラベル', tags === 'レビュー依頼,アサイン,メンション,アサイン', tags);
 
+  // 通知の種類ごとに色が変わっているか（#14）
+  const tagTones = await evl(`[...document.querySelectorAll('#todos .tag')].map(e => [...e.classList].find(c => c.startsWith('t-'))).join(',')`);
+  check('種別ラベルが種類ごとに色分け', tagTones === 't-review,t-assign,t-mention,t-assign', tagTones);
+  const tagColors = await evl(`[...new Set([...document.querySelectorAll('#todos .tag')].map(e => getComputedStyle(e).color))].join(' / ')`);
+  check('ラベルの描画色が実際に 3 色分かれている', tagColors.split(' / ').length === 3, tagColors);
+  const actionDots = await count('#actions .dot');
+  check('種別のチップにも同じ色の点が付く', actionDots === 3, String(actionDots));
+  // 開発機が暗い画面だと明るい画面用の配色を検証できないので、この項目だけ prefers-color-scheme を偽装する
+  await cdp.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: 'light' }] });
+  const tagColorsLight = await evl(`[...new Set([...document.querySelectorAll('#todos .tag')].map(e => getComputedStyle(e).color))].join(' / ')`);
+  check('明るい画面用の配色でも 3 色分かれる',
+    tagColorsLight.split(' / ').length === 3 && tagColorsLight !== tagColors, tagColorsLight);
+  await cdp.send('Emulation.setEmulatedMedia', { features: [] });
+
   const meta = await evl(`[...document.querySelectorAll('#todos .meta')].map(e => e.textContent).join('|')`);
   check('経過時間（たった今/時間前/日前）',
     /たった今/.test(meta) && /2時間前/.test(meta) && /1日前/.test(meta), meta.slice(0, 48) + '…');
@@ -205,6 +219,11 @@ let m = null;
   const typeTags = await evl(`[...document.querySelectorAll('#assignedItems .tag')].map(e => e.textContent).join(',')`);
   check('行頭に種別タグ（issue_type なしは Issue）',
     typeTags === 'Issue,Issue,タスク,Issue,Issue,タスク,インシデント', typeTags);
+  const typeTones = await evl(`[...document.querySelectorAll('#assignedItems .tag')].map(e => [...e.classList].find(c => c.startsWith('t-'))).join(',')`);
+  check('作業アイテムの種別も色分け', typeTones === 't-mention,t-mention,t-assign,t-mention,t-mention,t-assign,t-danger', typeTones);
+  const typeColors = await evl(`[...new Set([...document.querySelectorAll('#assignedItems .tag')].map(e => getComputedStyle(e).color))].join(' / ')`);
+  check('作業アイテムの描画色が 3 色分かれている', typeColors.split(' / ').length === 3, typeColors);
+  check('種別チップに色の点が付く', (await count('#assignedTypes .dot')) === 3, String(await count('#assignedTypes .dot')));
   check('作業アイテムタブに完了ボタンがない', (await count('#assignedItems button')) === 0);
   const dueCls = await evl(`[...document.querySelectorAll(${JSON.stringify(ROWS)})].map(li => li.querySelector('.due')?.className ?? '-').join('|')`);
   check('作業アイテムの期限の色分け（期限なしは期限を出さない）', dueCls === 'due over|due soon|due soon|due|-|-|-', dueCls);
