@@ -135,6 +135,20 @@ const actionTone = name => ACTION_TONES[name] ?? 'muted';
 const WORK_ITEM_TONES = { issue: 'mention', task: 'assign', incident: 'danger', test_case: 'ok' };
 const workItemTone = type => WORK_ITEM_TONES[type] ?? 'muted';
 
+// ---------- MR の状態 ----------
+// 種別（To-Do の種類・作業アイテムの種別）とは別の見た目にする。CSS の .s-<名前> に対応させる。
+// 色だけに頼らないよう、CSS で記号（● ✓ ✕ など）も付ける
+const MR_STATUS_LABELS = { open: 'mrOpen', draft: 'mrDraft', merged: 'mrMerged', closed: 'mrClosed', unknown: 'mrUnknown' };
+const mrStatus = mr => mr.state === 'merged' ? 'merged'
+  : mr.state === 'closed' ? 'closed'
+    : mr.state === 'opened' ? (mr.draft ? 'draft' : 'open') : 'unknown';
+
+// 最近の MR 更新の種類 → [文言のキー, 見た目]。発行と再オープンは「オープン」と同じ見た目
+const MR_EVENTS = {
+  issued: ['mrIssued', 'open'], reopened: ['mrReopened', 'open'],
+  merged: ['mrMerged', 'merged'], closed: ['mrClosed', 'closed'],
+};
+
 // ---------- 設定 ----------
 // GitLab API の URL。baseUrl の末尾スラッシュを揃える
 function apiUrl(baseUrl, p) {
@@ -255,6 +269,7 @@ function ago(iso, opts = {}) {
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     LANGS, CONFIG_DEFAULTS, TYPES, UI, ACTIONS, WORK_ITEM_TYPES, ACTION_TONES, WORK_ITEM_TONES, ASSIGNED_LIMIT, ASSIGNED_TIMEOUT_MS, tr, actionLabel, actionTone, workItemTone,
+    MR_STATUS_LABELS, MR_EVENTS, mrStatus,
     apiUrl, mergeConfig, intervalSec, freshTodos, todoRepo, issueRepo, shortName, dueInfo, ago,
     todoRef, workItemType, workItemTypeLabel, splitByDue, countOverdue, reachedLimit, assignedPatch, assignedTabLabel,
   };

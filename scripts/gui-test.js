@@ -116,6 +116,15 @@ async function shot(name) {
   console.log(`        → ${path.relative(REPO, file)}`);
 }
 
+// 配色の確認用に、同じ画面を暗い画面と明るい画面の両方で撮る（#18）
+async function shotSchemes(name) {
+  for (const scheme of ['dark', 'light']) {
+    await cdp.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: scheme }] });
+    await shot(`${name}-${scheme}.png`);
+  }
+  await cdp.send('Emulation.setEmulatedMedia', { features: [] });
+}
+
 let app = null;
 let m = null;
 
@@ -191,6 +200,7 @@ let m = null;
     && todoTitles.includes('アサインIssue #17 タスクバーのバッジが二重に表示される')
     && todoTitles.includes('アサインWork item #21 リリース手順の整理'), todoTitles);
   await shot('01-list.png');
+  await shotSchemes('ui-list');
 
   // 4) 期限の色分け
   const over = await count('#todos .due.over');
@@ -251,6 +261,29 @@ let m = null;
   const typeChips = await evl(`[...document.querySelectorAll('#assignedTypes .chip')].map(e => e.textContent).join('|')`);
   check('種別のチップ', typeChips === 'すべて 7|Issue 4|タスク 2|インシデント 1', typeChips);
   await shot('02-assigned.png');
+  await shotSchemes('ui-assigned');
+
+  // 配色の優先度（#18）: 期限超過が最も強く、絞り込みの選択中は警告色を使わず、MR 状態は種別ラベルと別の形
+  await waitFor('MR 状態のバッジ', `document.querySelector('#assignedItems .mr-status')`);
+  for (const scheme of ['dark', 'light']) {
+    await cdp.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: scheme }] });
+    const look = await evl(`(() => {
+      const s = q => getComputedStyle(document.querySelector(q));
+      const over = s('#assignedItems .due.over'), plain = s('#assignedItems .due:not(.soon):not(.over)');
+      const chip = s('#assignedTypes .chip.active'), tag = s(${JSON.stringify(itemTags)});
+      const mr = document.querySelector('#assignedItems .mr-status');
+      return { overWeight: over.fontWeight, overColor: over.color, plainColor: plain.color, chipBg: chip.backgroundColor,
+        tagBg: tag.backgroundColor, tagRadius: tag.borderTopLeftRadius,
+        mrRadius: mr && getComputedStyle(mr).borderTopLeftRadius, mrMark: mr && getComputedStyle(mr, '::before').content };
+    })()`);
+    const neutral = c => { const [r, g, b] = c.match(/\d+/g).map(Number); return Math.max(r, g, b) - Math.min(r, g, b) < 16; };
+    check(`[${scheme}] 期限超過は太字で通常の期限と色が違う`, Number(look.overWeight) >= 700 && look.overColor !== look.plainColor, JSON.stringify(look));
+    check(`[${scheme}] 絞り込みの選択中は無彩色（赤を使わない）`, neutral(look.chipBg), look.chipBg);
+    check(`[${scheme}] 種別ラベルは塗らない`, /rgba\(0, 0, 0, 0\)|transparent/.test(look.tagBg), look.tagBg);
+    check(`[${scheme}] MR 状態は種別ラベルと違う形で、記号付き`,
+      look.mrRadius !== look.tagRadius && /[●○✓✕?]/.test(look.mrMark ?? ''), `${look.mrRadius} / ${look.tagRadius} / ${look.mrMark}`);
+  }
+  await cdp.send('Emulation.setEmulatedMedia', { features: [] });
 
   await clickChip('#assignedTypes', 'タスク');
   await waitFor('タスクのみ', `document.querySelectorAll(${JSON.stringify(ROWS)}).length === 2`);
@@ -325,6 +358,7 @@ let m = null;
   check('最近の更新欄は日本語で表示される',
     (await evl(`document.querySelector('#recentMrUpdatesTitle').textContent`)) === '最近の MR 更新');
   await shot('07-related-mrs-ja.png');
+  await shotSchemes('ui-mr-updates');
 
   const openedCount = await evlMain('globalThis.__opened.length');
   await click(`${mrBadge(2, 23, 2, 45)}`);
@@ -533,6 +567,15 @@ let m = null;
   check('ヒントも英語', hintEn.includes('DPAPI'), hintEn);
   await click('.tab[data-view=list]');
   await shot('05-english.png');
+  // README の 2 枚目（英語の作業アイテムタブ）。README は暗い画面で揃えている
+  await cdp.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: 'dark' }] });
+  await click('.tab[data-view=assigned]');
+  // header は flex なので折り返しは矩形の数でなく高さで見る（1 行なら約 24px）
+  const wrapped = await evl(`[...document.querySelectorAll('header .tab')].filter(t => t.offsetHeight > 30).map(t => t.textContent)`);
+  check('英語でもタブ名が折り返さない', wrapped.length === 0, JSON.stringify(wrapped));
+  await shot('08-assigned-en.png');
+  await click('.tab[data-view=list]');
+  await cdp.send('Emulation.setEmulatedMedia', { features: [] });
 
   await click('.tab[data-view=settings]');
   await evl(`${sel}.value = 'ja'; document.querySelector('#form').requestSubmit();`);

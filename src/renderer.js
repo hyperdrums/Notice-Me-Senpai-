@@ -119,12 +119,9 @@ function externalLink(link, url) {
 }
 
 function relatedMrBadge(mr, issueKey) {
-  const [label, tone] = mr.state === 'merged' ? ['mrMerged', 'review']
-    : mr.state === 'closed' ? ['mrClosed', 'danger']
-      : mr.draft ? ['mrDraft', 'muted']
-        : mr.state === 'opened' ? ['mrOpen', 'ok'] : ['mrUnknown', 'muted'];
-  const status = tr(lang, label);
-  const link = el('a', `related-mr-link tag t-${tone}`);
+  const kind = mrStatus(mr);
+  const status = tr(lang, MR_STATUS_LABELS[kind]);
+  const link = el('a', `related-mr-link mr-status s-${kind}`);
   link.dataset.mrKey = itemKey(mr);
   link.dataset.assignedFocus = `${issueKey}:mr:${link.dataset.mrKey}`;
   link.title = mr.title;
@@ -134,16 +131,11 @@ function relatedMrBadge(mr, issueKey) {
   return link;
 }
 
-const MR_EVENT_LABELS = {
-  issued: ['mrIssued', 'mention'], merged: ['mrMerged', 'review'],
-  closed: ['mrClosed', 'danger'], reopened: ['mrReopened', 'ok'],
-};
-
 function renderRecentMrUpdates(updates, syncError) {
   const rows = [];
   for (const { issue, mr, type, at } of updates) {
-    if (!issue || !mr || !Object.hasOwn(MR_EVENT_LABELS, type)) continue;
-    const [label, tone] = MR_EVENT_LABELS[type];
+    if (!issue || !mr || !Object.hasOwn(MR_EVENTS, type)) continue;
+    const [label, kind] = MR_EVENTS[type];
     const row = el('li', 'recent-mr-update');
     row.dataset.eventType = type;
     const links = el('div', 'recent-mr-links');
@@ -159,7 +151,7 @@ function renderRecentMrUpdates(updates, syncError) {
     arrow.setAttribute('aria-hidden', 'true');
     links.append(issueLink, arrow, mrLink);
     const detail = el('div', 'recent-mr-detail');
-    detail.append(el('span', `recent-mr-event tag t-${tone}`, tr(lang, label)));
+    detail.append(el('span', `recent-mr-event mr-status s-${kind}`, tr(lang, label)));
     if (at && Number.isFinite(Date.parse(at))) {
       const time = el('time', 'recent-mr-time', ago(at, { lang }));
       time.dateTime = at;
