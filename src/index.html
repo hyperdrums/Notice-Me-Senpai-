@@ -6,10 +6,12 @@
 <title>Notice Me, Senpai!</title>
 <style>
   /* 配色のルール（#18）
-     - 強い色は「対応が必要なもの」だけ: 期限超過 --danger、期限間近 --soon、CI 失敗などの danger 系ラベル
-     - 種別ラベル（To-Do の種類・作業アイテムの種別）は枠線と文字色だけの控えめな表示
-     - 絞り込みの選択中は無彩色の反転表示。赤は「危険」の意味にだけ使う
-     - MR の状態は角丸の別形状＋記号で示し、色だけに頼らない */
+     - 強調の色は少ないほど効く。強い色は「対応が必要なもの」だけ: 期限超過・期限間近・CI 失敗・インシデント
+     - 作業アイテムの種別は「分類」で意味を持たないので無彩色。色は意味のあるものに取っておく
+     - MR の状態は GitHub / GitLab と同じ色の意味（オープン緑・マージ紫・クローズ赤）を記号だけに付け、文字は控えめに
+     - 色だけに頼らない（WCAG 1.4.1）: MR は記号、期限は文言でも分かる
+     - 行は「本文（タイトル・補足）」と「末尾（期限）」に分け、急ぎの情報は右端にそろえる
+     - 絞り込みの選択中は無彩色の反転表示。赤は「危険」の意味にだけ使う */
   :root {
     color-scheme: light dark;
     --text: #1f2328; --muted: #6e7781; --line: #d0d7de; --row-hover: #f3f4f6; --band: #f6f8fa;
@@ -64,10 +66,10 @@
   @media (prefers-color-scheme: dark) { .tag.t-danger { color: #0d1117; } }
   .dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; vertical-align: middle;
          margin-right: 5px; background: var(--tone, var(--muted)); }
-  /* MR の状態: 角丸の形と先頭の記号で、種別ラベルと見分ける */
-  .mr-status { display: inline-flex; align-items: center; gap: 3px; padding: 0 7px; border-radius: 9px; font-size: 11px; line-height: 16px;
-               color: var(--status); border: 1px solid color-mix(in srgb, var(--status) 50%, transparent); white-space: nowrap; }
-  .mr-status::before { font-size: 10px; line-height: 1; }
+  /* MR の状態: 枠も塗りもなし。色は先頭の記号だけに付け、文字は補足と同じ控えめな色 */
+  .mr-status { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; line-height: 16px;
+               color: var(--muted); white-space: nowrap; }
+  .mr-status::before { color: var(--status); font-size: 11px; line-height: 1; }
   .s-open::before { content: '●'; } .s-draft::before { content: '○'; } .s-merged::before { content: '✓'; }
   .s-closed::before { content: '✕'; } .s-unknown::before { content: '?'; }
   button { font: inherit; padding: 3px 10px; cursor: pointer; }
@@ -81,7 +83,9 @@
   .assigned-item-link { display: block; }
   .assigned-item-link:focus-visible, .related-mr-link:focus-visible,
   .recent-mr-links a:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
-  .related-mr-badges { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+  .related-mr-badges { display: flex; flex-wrap: wrap; gap: 2px 12px; margin-top: 3px; }
+  /* 行の末尾の枠（期限）。本文が省略されても、期限は右端で必ず読める */
+  li > .trail { flex-shrink: 0; text-align: right; font-size: 12px; white-space: nowrap; padding-top: 1px; }
   #recentMrUpdates { background: var(--band); border-bottom: 1px solid var(--line); }
   #recentMrUpdatesTitle { margin: 0; padding: 6px 10px 3px; font-size: 11px; font-weight: 600; color: var(--muted); }
   #recentMrUpdatesList > li { border-bottom: none; }

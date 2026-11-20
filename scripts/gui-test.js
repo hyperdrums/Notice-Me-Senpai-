@@ -244,11 +244,12 @@ let m = null;
   const typeTags = await evl(`[...document.querySelectorAll(${JSON.stringify(itemTags)})].map(e => e.textContent).join(',')`);
   check('行頭に種別タグ（issue_type なしは Issue）',
     typeTags === 'Issue,Issue,タスク,Issue,Issue,タスク,インシデント', typeTags);
+  // #18: 種別は分類なので無彩色。インシデントだけが「危険」の意味で強調される
   const typeTones = await evl(`[...document.querySelectorAll(${JSON.stringify(itemTags)})].map(e => [...e.classList].find(c => c.startsWith('t-'))).join(',')`);
-  check('作業アイテムの種別も色分け', typeTones === 't-mention,t-mention,t-assign,t-mention,t-mention,t-assign,t-danger', typeTones);
-  const typeColors = await evl(`[...new Set([...document.querySelectorAll(${JSON.stringify(itemTags)})].map(e => getComputedStyle(e).color))].join(' / ')`);
-  check('作業アイテムの描画色が 3 色分かれている', typeColors.split(' / ').length === 3, typeColors);
-  check('種別チップに色の点が付く', (await count('#assignedTypes .dot')) === 3, String(await count('#assignedTypes .dot')));
+  check('作業アイテムの種別はインシデントだけ強調', typeTones === 't-muted,t-muted,t-muted,t-muted,t-muted,t-muted,t-danger', typeTones);
+  check('種別チップに色の点を付けない', (await count('#assignedTypes .dot')) === 0, String(await count('#assignedTypes .dot')));
+  const trailDue = await evl(`[...document.querySelectorAll(${JSON.stringify(ROWS)})].map(li => li.querySelector(':scope > .trail > .due') ? 'R' : li.querySelector('.due') ? 'L' : '-').join('')`);
+  check('期限は行の右端（末尾の枠）に出る', trailDue === 'RRRR---', trailDue);
   const dueCls = await evl(`[...document.querySelectorAll(${JSON.stringify(ROWS)})].map(li => li.querySelector('.due')?.className ?? '-').join('|')`);
   check('作業アイテムの期限の色分け（期限なしは期限を出さない）', dueCls === 'due over|due soon|due soon|due|-|-|-', dueCls);
   const dueTexts = await evl(`[...document.querySelectorAll('#assignedItems .due')].map(e => e.textContent).join(' | ')`);
@@ -272,16 +273,22 @@ let m = null;
       const over = s('#assignedItems .due.over'), plain = s('#assignedItems .due:not(.soon):not(.over)');
       const chip = s('#assignedTypes .chip.active'), tag = s(${JSON.stringify(itemTags)});
       const mr = document.querySelector('#assignedItems .mr-status');
+      const tags = [...document.querySelectorAll(${JSON.stringify(itemTags)})].filter(e => !e.classList.contains('t-danger'));
       return { overWeight: over.fontWeight, overColor: over.color, plainColor: plain.color, chipBg: chip.backgroundColor,
-        tagBg: tag.backgroundColor, tagRadius: tag.borderTopLeftRadius,
-        mrRadius: mr && getComputedStyle(mr).borderTopLeftRadius, mrMark: mr && getComputedStyle(mr, '::before').content };
+        tagBg: tag.backgroundColor, tagColors: [...new Set(tags.map(e => getComputedStyle(e).color))],
+        mrText: mr && getComputedStyle(mr).color, mrMarkColor: mr && getComputedStyle(mr, '::before').color,
+        mrBorder: mr && getComputedStyle(mr).borderTopWidth, mrMark: mr && getComputedStyle(mr, '::before').content };
     })()`);
-    const neutral = c => { const [r, g, b] = c.match(/\d+/g).map(Number); return Math.max(r, g, b) - Math.min(r, g, b) < 16; };
+    // 無彩色の判定。補足文字のグレー（#6e7781 など）はわずかに青みがあり RGB の幅が 19 前後になるので、
+    // 有彩色（MR の緑・紫・赤は幅 100 以上）と確実に分けられる 32 未満を無彩色とみなす
+    const neutral = c => { const [r, g, b] = c.match(/\d+/g).map(Number); return Math.max(r, g, b) - Math.min(r, g, b) < 32; };
     check(`[${scheme}] 期限超過は太字で通常の期限と色が違う`, Number(look.overWeight) >= 700 && look.overColor !== look.plainColor, JSON.stringify(look));
     check(`[${scheme}] 絞り込みの選択中は無彩色（赤を使わない）`, neutral(look.chipBg), look.chipBg);
-    check(`[${scheme}] 種別ラベルは塗らない`, /rgba\(0, 0, 0, 0\)|transparent/.test(look.tagBg), look.tagBg);
-    check(`[${scheme}] MR 状態は種別ラベルと違う形で、記号付き`,
-      look.mrRadius !== look.tagRadius && /[●○✓✕?]/.test(look.mrMark ?? ''), `${look.mrRadius} / ${look.tagRadius} / ${look.mrMark}`);
+    check(`[${scheme}] 種別ラベルは塗らず、インシデント以外は無彩色の1色`,
+      /rgba\(0, 0, 0, 0\)|transparent/.test(look.tagBg) && look.tagColors.length === 1 && neutral(look.tagColors[0]), JSON.stringify(look.tagColors));
+    check(`[${scheme}] MR 状態は枠なし・文字は控えめ・色は記号だけ`,
+      look.mrBorder === '0px' && neutral(look.mrText) && !neutral(look.mrMarkColor) && /[●○✓✕?]/.test(look.mrMark ?? ''),
+      `${look.mrBorder} / ${look.mrText} / ${look.mrMarkColor} / ${look.mrMark}`);
   }
   await cdp.send('Emulation.setEmulatedMedia', { features: [] });
 

@@ -184,14 +184,16 @@ function assignedRow(i, relatedMrsByIssue) {
   const title = el('div', 'title');
   title.append(el('span', `tag t-${workItemTone(workItemType(i))}`, workItemTypeLabel(lang, workItemType(i))), `#${i.iid} ${i.title}`);
   const meta = el('div', 'meta');
-  if (i.due_date) {
-    const due = dueInfo(i.due_date, { lang });
-    meta.append(el('span', due.cls, due.text), ' · ');
-  }
   meta.append(`${issueRepo(i)}${i.labels?.length ? ` · ${i.labels.join(', ')}` : ''}`);
   issueLink.append(title, meta);
   main.append(issueLink);
-  li.append(main);
+  // 期限は行の右端（末尾の枠）にまとめ、縦に流し見したとき急ぎの行を拾えるようにする
+  const trail = el('div', 'trail');
+  if (i.due_date) {
+    const due = dueInfo(i.due_date, { lang });
+    trail.append(el('span', due.cls, due.text));
+  }
+  li.append(main, trail);
   li.onclick = () => window.api.open(i.web_url);
   if (key && workItemType(i) === 'issue') {
     li.dataset.issueKey = key;
@@ -212,7 +214,7 @@ function renderAssigned(items, limited, total, error, relatedMrsByIssue = {}) {
   const inRepo = items.filter(i => filter.assignedRepo === 'all' || issueRepo(i) === filter.assignedRepo);
   // 種別が 1 つ以下なら選ぶ意味がないので行ごと隠す（空の Map を渡すと選択も 'all' に戻る）
   const types = countBy(inRepo, workItemType);
-  renderChips($('#assignedTypes'), 'assignedType', types.size >= 2 ? types : new Map(), v => workItemTypeLabel(lang, v), () => '', v => workItemTone(v));
+  renderChips($('#assignedTypes'), 'assignedType', types.size >= 2 ? types : new Map(), v => workItemTypeLabel(lang, v));
   const shown = inRepo.filter(i => filter.assignedType === 'all' || workItemType(i) === filter.assignedType);
   $('#assignedTab').textContent = assignedTabLabel(items, { lang, total });
   $('#assignedLimit').classList.toggle('hidden', !limited);

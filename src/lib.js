@@ -131,8 +131,9 @@ const ACTION_TONES = {
 // 未知の action_name は無色。色を付け忘れた項目もここ落ちするので、テストで網羅を確認する
 const actionTone = name => ACTION_TONES[name] ?? 'muted';
 
-// 作業アイテムの種別ごとの色
-const WORK_ITEM_TONES = { issue: 'mention', task: 'assign', incident: 'danger', test_case: 'ok' };
+// 作業アイテムの種別ごとの色。種別は「分類」で意味を持たないので無彩色にそろえる。
+// インシデントだけは対応の急ぎを表すので強調する（期限超過と同じ「危険」の意味）
+const WORK_ITEM_TONES = { issue: 'muted', task: 'muted', incident: 'danger', test_case: 'muted' };
 const workItemTone = type => WORK_ITEM_TONES[type] ?? 'muted';
 
 // ---------- MR の状態 ----------
