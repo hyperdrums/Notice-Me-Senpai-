@@ -7,10 +7,10 @@
 <style>
   /* 配色のルール（#18）
      - 強調の色は少ないほど効く。強い色は「対応が必要なもの」だけ: 期限超過・期限間近・CI 失敗・インシデント
-     - 作業アイテムの種別は「分類」で意味を持たないので無彩色。色は意味のあるものに取っておく
+     - To-Do の種類・作業アイテムの種別は「分類」で意味を持たないので無彩色。色は意味のあるものに取っておく
      - MR の状態は GitHub / GitLab と同じ色の意味（オープン緑・マージ紫・クローズ赤）を記号だけに付け、文字は控えめに
      - 色だけに頼らない（WCAG 1.4.1）: MR は記号、期限は文言でも分かる
-     - 行は「本文（タイトル・補足）」と「末尾（期限）」に分け、急ぎの情報は右端にそろえる
+     - 行は「本文（タイトル・補足）」と「末尾（期限）」に分け、急ぎの情報は右端にそろえる（To-Do・作業アイテム共通）
      - 絞り込みの選択中は無彩色の反転表示。赤は「危険」の意味にだけ使う */
   :root {
     color-scheme: light dark;
@@ -25,14 +25,10 @@
       --chip-on-bg: #e6edf3; --chip-on-fg: #0d1117;
     }
   }
-  /* ラベルの色（明るい画面用）。暗い画面は下の prefers-color-scheme で差し替える */
-  .t-review { --tone: #7448c2; } .t-assign { --tone: #8a5a14; } .t-mention { --tone: #2d5fbf; }
-  .t-warn { --tone: #9a4a12; } .t-danger { --tone: #c62828; } .t-ok { --tone: #2f6f4f; }
-  .t-muted { --tone: #6e7781; }
+  /* 種別ラベルの色（明るい画面用）。分類は無彩色、対応が必要なものだけ danger */
+  .t-danger { --tone: #c62828; } .t-muted { --tone: #6e7781; }
   @media (prefers-color-scheme: dark) {
-    .t-review { --tone: #b8a3e0; } .t-assign { --tone: #d6b37a; } .t-mention { --tone: #8fb3eb; }
-    .t-warn { --tone: #f0a77f; } .t-danger { --tone: #ff7b72; } .t-ok { --tone: #8cc3a2; }
-    .t-muted { --tone: #8b949e; }
+    .t-danger { --tone: #ff7b72; } .t-muted { --tone: #8b949e; }
   }
   /* MR の状態（明るい画面用）。種別ラベルの .t-* とは名前も見た目も分ける */
   .s-open { --status: #1a7f37; } .s-draft { --status: #6e7781; } .s-merged { --status: #8250df; }
@@ -64,8 +60,6 @@
   /* 対応が必要な種類（CI 失敗・インシデントなど）だけは塗りで強調する */
   .tag.t-danger { color: #fff; background: var(--danger); border-color: var(--danger); }
   @media (prefers-color-scheme: dark) { .tag.t-danger { color: #0d1117; } }
-  .dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; vertical-align: middle;
-         margin-right: 5px; background: var(--tone, var(--muted)); }
   /* MR の状態: 枠も塗りもなし。色は先頭の記号だけに付け、文字は補足と同じ控えめな色 */
   .mr-status { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; line-height: 16px;
                color: var(--muted); white-space: nowrap; }
@@ -86,6 +80,7 @@
   .related-mr-badges { display: flex; flex-wrap: wrap; gap: 2px 12px; margin-top: 3px; }
   /* 行の末尾の枠（期限）。本文が省略されても、期限は右端で必ず読める */
   li > .trail { flex-shrink: 0; text-align: right; font-size: 12px; white-space: nowrap; padding-top: 1px; }
+  li > .trail:empty { display: none; }
   #recentMrUpdates { background: var(--band); border-bottom: 1px solid var(--line); }
   #recentMrUpdatesTitle { margin: 0; padding: 6px 10px 3px; font-size: 11px; font-weight: 600; color: var(--muted); }
   #recentMrUpdatesList > li { border-bottom: none; }
@@ -138,7 +133,7 @@
     <h2 id="recentMrUpdatesTitle" data-i18n="recentMrUpdates"></h2>
     <ul id="recentMrUpdatesList"></ul>
   </section>
-  <p id="mrSyncError" class="hint t-warn" data-i18n="mrSyncError" hidden></p>
+  <p id="mrSyncError" class="hint" data-i18n="mrSyncError" hidden></p>
   <div class="bar repos" id="assignedRepos"></div>
   <div class="bar" id="assignedTypes"></div>
   <div class="hint hidden" id="assignedLimit"></div>

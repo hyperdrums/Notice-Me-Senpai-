@@ -332,19 +332,21 @@ test('ACTION_TONES: 日英で action_name の一覧がズレていない', () =>
   assert.deepEqual(Object.keys(ACTIONS.en).sort(), Object.keys(ACTIONS.ja).sort());
 });
 
-test('actionTone: 未知の action_name は無色', () => {
-  assert.equal(actionTone('review_requested'), 'review');
-  assert.equal(actionTone('assigned'), 'assign');
-  assert.equal(actionTone('mentioned'), 'mention');
-  assert.equal(actionTone('directly_addressed'), 'mention');
+test('actionTone: 分類は無彩色、壊れているものだけ danger（#18）', () => {
+  assert.equal(actionTone('review_requested'), 'muted');
+  assert.equal(actionTone('assigned'), 'muted');
+  assert.equal(actionTone('mentioned'), 'muted');
   assert.equal(actionTone('build_failed'), 'danger');
+  assert.equal(actionTone('unmergeable'), 'danger');
   assert.equal(actionTone('何らかの新しいアクション'), 'muted');
+  assert.deepEqual([...new Set(Object.values(ACTION_TONES))].sort(), ['danger', 'muted']);
 });
 
 test('workItemTone: 翻訳を持つ種別は必ず色を持つ', () => {
   const missing = Object.keys(WORK_ITEM_TYPES.ja).filter(k => !WORK_ITEM_TONES[k]);
   assert.deepEqual(missing, [], `色が付いていない issue_type: ${missing.join(', ')}`);
   assert.equal(workItemTone('incident'), 'danger');
+  assert.equal(workItemTone('issue'), 'muted');
   assert.equal(workItemTone('unknown_type'), 'muted');
 });
 

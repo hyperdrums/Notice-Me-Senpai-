@@ -32,8 +32,7 @@ function el(tag, cls, text) {
 }
 
 // 選択肢を並べ、クリックで filter[key] を切り替える。消えた選択肢は 'all' に戻す
-// toneOf を渡すと、各選択肢の先頭にラベルと同じ色の点を付ける（色と絞り込みを対応させるため）
-function renderChips(container, key, entries, labelOf = v => v, titleOf = () => '', toneOf = null) {
+function renderChips(container, key, entries, labelOf = v => v, titleOf = () => '') {
   if (filter[key] !== 'all' && !entries.has(filter[key])) filter[key] = 'all';
   container.replaceChildren();
   if (entries.size === 0) return;
@@ -41,8 +40,6 @@ function renderChips(container, key, entries, labelOf = v => v, titleOf = () => 
   for (const [value, n] of [['all', total], ...entries]) {
     const label = value === 'all' ? tr(lang, 'all') : labelOf(value);
     const c = el('span', `chip${filter[key] === value ? ' active' : ''}`);
-    const tone = value === 'all' ? null : toneOf?.(value);
-    if (tone) c.append(el('i', `dot t-${tone}`));
     c.append(`${label} ${n}`);
     c.title = value === 'all' ? '' : titleOf(value);
     c.onclick = () => { filter[key] = value; render(current); };
@@ -61,9 +58,7 @@ function renderTodos(todos, error) {
   renderChips($('#todoRepos'), 'todoRepo', countBy(todos, t => todoRepo(t, lang)), shortName, p => p);
   const inRepo = todos.filter(t => filter.todoRepo === 'all' || todoRepo(t, lang) === filter.todoRepo);
   const actionOf = t => actionLabel(lang, t.action_name);
-  // チップはラベルでまとめているので、色も引けるよう ラベル → 色 を覚えておく
-  const toneOfAction = new Map(inRepo.map(t => [actionOf(t), actionTone(t.action_name)]));
-  renderChips($('#actions'), 'action', countBy(inRepo, actionOf), undefined, () => '', v => toneOfAction.get(v));
+  renderChips($('#actions'), 'action', countBy(inRepo, actionOf));
   const shown = inRepo.filter(t => filter.action === 'all' || actionOf(t) === filter.action);
 
   const ul = $('#todos');
@@ -77,18 +72,18 @@ function renderTodos(todos, error) {
     const ref = todoRef(t);
     title.append(`${TYPES[t.target_type] ?? t.target_type}${ref ? ` ${ref}` : ''} ${t.target?.title ?? ''}`);
     const meta = el('div', 'meta');
-    // アサインは期限を表示（Issue の期限、なければマイルストーンの期限）
-    if (t.action_name === 'assigned') {
-      const due = dueInfoOr(t, lang);
-      if (due) meta.append(el('span', due.cls, due.text), ' · ');
-    }
     meta.append(`${t.project?.name_with_namespace ?? t.group?.full_name ?? ''} · ${t.author?.name ?? ''} · ${ago(t.created_at, { lang })}`);
     main.append(title, meta);
     if (t.body) main.append(el('div', 'body', t.body));
+    // 作業アイテムタブと同じく、期限は行の右端（末尾の枠）にまとめる。
+    // アサインだけ期限を出す（Issue の期限、なければマイルストーンの期限）
+    const trail = el('div', 'trail');
+    const due = t.action_name === 'assigned' ? dueInfoOr(t, lang) : null;
+    if (due) trail.append(el('span', due.cls, due.text));
     const btn = el('button', null, tr(lang, 'done'));
     btn.title = lang === 'en' ? 'Mark this To-Do as done on GitLab' : 'GitLab 上で To-Do を完了にする';
     btn.onclick = e => { e.stopPropagation(); btn.disabled = true; window.api.done(t.id); };
-    li.append(main, btn);
+    li.append(main, trail, btn);
     li.onclick = () => window.api.open(t.target_url);
     ul.append(li);
   }

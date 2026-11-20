@@ -115,17 +115,15 @@ function tr(lang, key, vars) {
 const actionLabel = (lang, name) => ACTIONS[lang]?.[name] ?? ACTIONS.ja[name] ?? name;
 
 // ---------- ラベルの色 ----------
-// action_name を「対応の急ぎ具合」で色のグループに寄せる。CSS の .t-<名前> に対応させる
-//   review: レビュー依頼（主役）  assign: アサイン（期限と紐づく）  mention: 呼ばれた
-//   warn: 承認待ち  danger: 壊れている  ok: 済み  muted: 情報扱い
+// To-Do の種類は「分類」で意味を持たないので無彩色（muted）にそろえる（#18）。
+// 何かが壊れていて対応が必要な種類だけ danger で強調する。CSS の .t-<名前> に対応させる。
+// 新しい action_name を足すときは、どちらにするかをここで明示的に決める（テストで網羅を確認）
 const ACTION_TONES = {
-  review_requested: 'review',
-  assigned: 'assign',
-  mentioned: 'mention', directly_addressed: 'mention',
-  approval_required: 'warn',
-  build_failed: 'danger', unmergeable: 'danger', merge_train_removed: 'danger',
-  review_submitted: 'ok',
+  review_requested: 'muted', assigned: 'muted',
+  mentioned: 'muted', directly_addressed: 'muted',
+  approval_required: 'muted', review_submitted: 'muted',
   marked: 'muted', member_access_requested: 'muted',
+  build_failed: 'danger', unmergeable: 'danger', merge_train_removed: 'danger',
 };
 
 // 未知の action_name は無色。色を付け忘れた項目もここ落ちするので、テストで網羅を確認する

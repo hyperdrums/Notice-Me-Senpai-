@@ -177,19 +177,19 @@ let m = null;
   const tags = await evl(`[...document.querySelectorAll('#todos .tag')].map(e => e.textContent).join(',')`);
   check('種別ラベル', tags === 'レビュー依頼,アサイン,メンション,アサイン', tags);
 
-  // 通知の種類ごとに色が変わっているか（#14）
+  // #18: To-Do の種類は分類なので無彩色の1色。期限は行の右端、絞り込みチップに色の点は付けない
   const tagTones = await evl(`[...document.querySelectorAll('#todos .tag')].map(e => [...e.classList].find(c => c.startsWith('t-'))).join(',')`);
-  check('種別ラベルが種類ごとに色分け', tagTones === 't-review,t-assign,t-mention,t-assign', tagTones);
-  const tagColors = await evl(`[...new Set([...document.querySelectorAll('#todos .tag')].map(e => getComputedStyle(e).color))].join(' / ')`);
-  check('ラベルの描画色が実際に 3 色分かれている', tagColors.split(' / ').length === 3, tagColors);
-  const actionDots = await count('#actions .dot');
-  check('種別のチップにも同じ色の点が付く', actionDots === 3, String(actionDots));
-  // 開発機が暗い画面だと明るい画面用の配色を検証できないので、この項目だけ prefers-color-scheme を偽装する
-  await cdp.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: 'light' }] });
-  const tagColorsLight = await evl(`[...new Set([...document.querySelectorAll('#todos .tag')].map(e => getComputedStyle(e).color))].join(' / ')`);
-  check('明るい画面用の配色でも 3 色分かれる',
-    tagColorsLight.split(' / ').length === 3 && tagColorsLight !== tagColors, tagColorsLight);
+  check('To-Do の種類ラベルは無彩色', tagTones === 't-muted,t-muted,t-muted,t-muted', tagTones);
+  for (const scheme of ['dark', 'light']) {
+    await cdp.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: scheme }] });
+    const colors = await evl(`[...new Set([...document.querySelectorAll('#todos .tag')].map(e => getComputedStyle(e).color))]`);
+    const [r, g, b] = (colors[0] ?? '').match(/\d+/g)?.map(Number) ?? [0, 255, 0];
+    check(`[${scheme}] To-Do の種類ラベルは無彩色の1色`, colors.length === 1 && Math.max(r, g, b) - Math.min(r, g, b) < 32, JSON.stringify(colors));
+  }
   await cdp.send('Emulation.setEmulatedMedia', { features: [] });
+  check('To-Do の絞り込みチップに色の点を付けない', (await count('#actions .dot')) === 0);
+  const todoTrail = await evl(`[...document.querySelectorAll('#todos > li')].map(li => li.querySelector(':scope > .trail > .due') ? 'R' : li.querySelector('.due') ? 'L' : '-').join('')`);
+  check('To-Do の期限も行の右端（完了ボタンの左）に出る', todoTrail === '-R-R', todoTrail);
 
   const meta = await evl(`[...document.querySelectorAll('#todos .meta')].map(e => e.textContent).join('|')`);
   check('経過時間（たった今/時間前/日前）',
