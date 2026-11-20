@@ -4,6 +4,8 @@ const {
 } = require('electron');
 const path = require('path');
 const fs = require('fs');
+const { createHash } = require('crypto');
+const { newMrCache, rememberIssues, mrView, syncMrProject } = require('./mr-sync.js');
 const { CONFIG_DEFAULTS, ASSIGNED_LIMIT, ASSIGNED_TIMEOUT_MS, apiUrl, mergeConfig, intervalSec, freshTodos, assignedPatch, tr } = require('./lib.js');
 
 // 軽量化: GPU・ネットワークを別プロセスにせず、メインに統合する（素のHTMLなのでGPU不要）
@@ -25,7 +27,14 @@ let quitting = false;
 let config = { ...DEFAULTS, token: '' };
 let knownIds = null; // 初回取得ではデスクトップ通知を出さない
 // count は To-Do だけの件数（バッジとトレイ用）。作業アイテムの件数は混ぜない
-let state = { todos: [], assigned: [], assignedLimited: false, assignedTotal: null, assignedError: null, count: 0, error: null, updatedAt: null, loading: false };
+let state = { todos: [], assigned: [], assignedLimited: false, assignedTotal: null, assignedError: null, relatedMrsByIssue: {}, recentMrUpdates: [], mrSyncError: false, count: 0, error: null, updatedAt: null, loading: false };
+let connectionGeneration = 0;
+let mrCache = newMrCache();
+let mrJob = null;
+let mrOffset = 0;
+let mrRetryAt = 0;
+const mrCachePath = () => path.join(app.getPath('userData'), 'mr-cache.enc');
+const mrConnectionKey = () => createHash('sha256').update(JSON.stringify([config.baseUrl, config.token])).digest('hex');
 let pollSeq = 0;      // poll の通し番号
 let assignedSeq = 0;  // 作業アイテムの結果を反映した最新の poll の番号
 
@@ -105,8 +114,79 @@ async function fetchAssigned() {
   }
 }
 
+async function loadMrCache() {
+  if (!config.baseUrl || !config.token) return;
+  try {
+    const data = await fs.promises.readFile(mrCachePath());
+    const { result } = await safeStorage.decryptStringAsync(data);
+    const { key, cache } = JSON.parse(result);
+    if (key === mrConnectionKey() && cache?.issues && cache.projects && cache.mrs && Array.isArray(cache.history)) {
+      mrCache = cache;
+      rememberIssues(mrCache, [], Date.now());
+      setState(mrView(mrCache));
+    }
+  } catch { /* 無い、または復号できないキャッシュは作り直す */ }
+}
+
+function syncMrs(generation) {
+  if (mrJob || generation !== connectionGeneration || Date.now() < mrRetryAt) return;
+  const cache = mrCache;
+  const controller = new AbortController();
+  const job = { controller };
+  mrJob = job;
+  setState({ mrSyncing: true });
+  const upper = Date.now();
+  const projects = rememberIssues(cache, state.assigned, upper);
+  let remaining = 30;
+  // 1 リクエストずつ実行し、1 回の同期にも予算を設ける。途中停止ではカーソルを進めない。
+  const budget = new Error('MR request budget exhausted');
+  const get = async endpoint => {
+    controller.signal.throwIfAborted();
+    if (remaining <= 0) throw budget;
+    remaining--;
+    const signal = AbortSignal.any([controller.signal, AbortSignal.timeout(ASSIGNED_TIMEOUT_MS)]);
+    const res = await api(endpoint, 'GET', signal);
+    return { rows: await res.json(), nextPage: res.headers.get('x-next-page') };
+  };
+  void (async () => {
+    let failed = false;
+    try {
+      let index = mrOffset % (projects.length || 1);
+      for (let i = 0; i < projects.length; i++) {
+        try {
+          await syncMrProject(cache, projects[index], upper, get);
+        } catch (e) {
+          if (controller.signal.aborted || e === budget) break;
+          failed = true;
+          if (e.message === 'HTTP 429') {
+            mrRetryAt = Date.now() + 60_000;
+            break;
+          }
+        }
+        index = (index + 1) % projects.length;
+        mrOffset = index;
+      }
+      if (generation !== connectionGeneration) return;
+      setState({ ...mrView(cache), mrSyncError: failed });
+      const data = await safeStorage.encryptStringAsync(JSON.stringify({ key: mrConnectionKey(), cache }));
+      if (generation !== connectionGeneration) return;
+      const file = mrCachePath();
+      fs.writeFileSync(`${file}.tmp`, data);
+      fs.renameSync(`${file}.tmp`, file);
+    } catch {
+      if (generation === connectionGeneration) setState({ mrSyncError: true });
+    } finally {
+      if (mrJob === job) {
+        mrJob = null;
+        setState({ mrSyncing: false });
+      }
+    }
+  })();
+}
+
 async function poll() {
   const seq = ++pollSeq;
+  const generation = connectionGeneration;
   if (!config.baseUrl || !config.token) {
     assignedSeq = seq;
     setState({ todos: [], assigned: [], assignedLimited: false, assignedTotal: null, assignedError: null, count: 0, error: tr(config.lang, 'errNotConfigured') });
@@ -118,9 +198,11 @@ async function poll() {
   const assignedFetch = Promise.allSettled([fetchAssigned()]);
   try {
     const { todos, count } = await fetchTodos();
+    if (generation !== connectionGeneration) return;
     notifyNew(todos);
     setState({ todos, count, error: null, updatedAt: Date.now(), loading: false });
   } catch (e) {
+    if (generation !== connectionGeneration) return;
     assignedSeq = Math.max(assignedSeq, seq);
     setState({ error: tr(config.lang, 'errFetch', { msg: e.message }), assignedError: null, loading: false });
     return;
@@ -130,6 +212,7 @@ async function poll() {
   if (seq < assignedSeq) return;
   assignedSeq = seq;
   setState(assignedPatch(assignedResult, config.lang));
+  if (assignedResult.status === 'fulfilled') syncMrs(generation);
 }
 
 function notifyNew(todos) {
@@ -238,7 +321,18 @@ ipcMain.handle('get-config', () => {
   return { ...rest, hasToken: !!token };
 });
 ipcMain.handle('save-config', async (_e, c) => {
+  const previous = config;
   config = mergeConfig(config, c);
+  if (previous.baseUrl !== config.baseUrl || previous.token !== config.token) {
+    assignedSeq = ++pollSeq;
+    connectionGeneration++;
+    mrJob?.controller.abort();
+    mrJob = null;
+    mrOffset = 0;
+    mrRetryAt = 0;
+    mrCache = newMrCache();
+    setState({ todos: [], count: 0, assigned: [], assignedLimited: false, assignedTotal: null, assignedError: null, ...mrView(mrCache), mrSyncError: false });
+  }
   await saveConfig();
   applyCertPolicy();
   applyAutoStart();
@@ -270,6 +364,7 @@ app.on('second-instance', showWindow);
 app.on('before-quit', () => { quitting = true; });
 app.whenReady().then(async () => {
   await loadConfig();
+  await loadMrCache();
   applyCertPolicy();
   createWindow();
   createTray();

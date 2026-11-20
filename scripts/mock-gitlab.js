@@ -4,7 +4,8 @@
 //   テストから:  const mock = require('./mock-gitlab.js'); await mock.start()
 //
 // /api/v4 以外はテスト用の制御口（__ で始まる）
-//   /__fail?target=todos|issues&status=500  その API を失敗させる（status=0 で解除）
+//   /__fail?target=todos|issues|mergeRequests|closesIssues&status=500  API を失敗させる（status=0 で解除）
+//   /__mr-transition?event=issued|merged|closed|reopen-issue  MR と Issue の状態を進める
 //   /__assigned-total?n=150                 /issues の x-total を上書きする（n=none で省く、n なしで解除）
 //   /__assigned-count?n=150                 /issues の件数を期限なしで水増しする（n なしで解除）
 //   /__hang-issues?on=1                     /issues に応答しない（on=0 で解除し、止めていた分にも応答する）
@@ -96,16 +97,54 @@ function initialIssues(count = 0) {
     makeIssue({ id: 217, iid: 17, title: 'タスクバーのバッジが二重に表示される', due_date: day(-2), labels: ['bug'], issue_type: undefined, references: { full: 'group/proj-a#17' } }),
     makeIssue({ id: 222, iid: 22, title: '設定画面のトークン欄にプレースホルダ', due_date: day(1), references: { full: 'group/proj-a#22' } }),
     makeIssue({ id: 225, iid: 25, title: '確認手順を書き出す', issue_type: 'task', due_date: day(3), references: { full: 'group/proj-a#25' } }),
-    makeIssue({ id: 223, iid: 23, title: 'README にスクリーンショットを載せる', due_date: day(14), references: { full: 'other/proj-b#23' } }),
+    makeIssue({ id: 223, iid: 23, project_id: 2, title: 'README にスクリーンショットを載せる', due_date: day(14), references: { full: 'other/proj-b#23' }, web_url: 'http://127.0.0.1/other/proj-b/-/issues/23' }),
     makeIssue({ id: 224, iid: 24, title: '期限なしの Issue', due_date: null, references: { full: 'group/proj-a#24' } }),
-    makeIssue({ id: 226, iid: 26, title: '期限なしのタスク', issue_type: 'task', due_date: null, references: { full: 'other/proj-b#26' } }),
-    makeIssue({ id: 227, iid: 27, title: '期限なしのインシデント', issue_type: 'incident', due_date: null, references: { full: 'other/proj-c#27' } }),
+    makeIssue({ id: 226, iid: 26, project_id: 2, title: '期限なしのタスク', issue_type: 'task', due_date: null, references: { full: 'other/proj-b#26' }, web_url: 'http://127.0.0.1/other/proj-b/-/issues/26' }),
+    makeIssue({ id: 227, iid: 27, project_id: 3, title: '期限なしのインシデント', issue_type: 'incident', due_date: null, references: { full: 'other/proj-c#27' }, web_url: 'http://127.0.0.1/other/proj-c/-/issues/27' }),
   ];
   for (let iid = 1000; issues.length < count; iid++) issues.push(makeIssue({ id: iid, iid, title: `水増し ${iid}`, due_date: null }));
   return issues;
 }
 
-const initialState = () => ({ issues: initialIssues(), done: [], pushed: 0, fail: { todos: 0, issues: 0 }, assignedTotal: null, hangIssues: false, issuesQuery: null });
+const mrFixture = (id, iid, project_id, path, title, closes, fields = {}) => ({
+  closes,
+  path,
+  row: { id, iid, project_id, target_project_id: project_id, title, state: 'opened', draft: false,
+    created_at: iso(120), updated_at: iso(60), ...fields },
+});
+
+const initialMrs = () => [
+  mrFixture(342, 42, 1, 'group/proj-a', 'バッジの重複表示を修正する', [999, 217]),
+  mrFixture(343, 43, 1, 'group/proj-a', '通知バッジの回帰テストを追加する', [217], { updated_at: iso(59) }),
+  mrFixture(345, 45, 2, 'other/proj-b', 'README の画像を更新する', [223], { draft: true }),
+  mrFixture(349, 49, 2, 'other/proj-b', '追跡範囲より古い MR', [223], { created_at: iso(12000), updated_at: iso(12000) }),
+];
+
+function advanceMrFixture(state, event) {
+  // 同じイベントを繰り返しても時刻が逆転しない。GUI は前の同期を待ってから次に進む。
+  const updated_at = new Date().toISOString();
+  const mr = (project, iid) => state.mrs.find(({ row }) => row.project_id === project && row.iid === iid)?.row;
+  const issue = state.issues.find(i => i.id === 217);
+  if (event === 'issued' && !mr(1, 46)) {
+    state.mrs.push(mrFixture(346, 46, 1, 'group/proj-a', 'バッジ更新の回帰テストを追加する', [217],
+      { created_at: updated_at, updated_at }));
+  } else if (event === 'merged' && mr(1, 42).state !== 'merged') {
+    Object.assign(mr(1, 42), { state: 'merged', merged_at: updated_at, updated_at });
+    if (issue) Object.assign(issue, { state: 'closed', closed_at: updated_at, updated_at });
+  } else if (event === 'closed' && mr(2, 45).state !== 'closed') {
+    Object.assign(mr(2, 45), { state: 'closed', closed_at: updated_at, updated_at });
+  } else if (event === 'reopen-issue' && issue?.state === 'closed') {
+    Object.assign(issue, { state: 'opened', closed_at: null, updated_at });
+  } else return false;
+  return true;
+}
+
+const initialState = () => ({
+  issues: initialIssues(), mrs: initialMrs(), done: [], pushed: 0,
+  fail: { todos: 0, issues: 0, mergeRequests: 0, closesIssues: 0 },
+  assignedTotal: null, hangIssues: false, issuesQuery: null,
+  mrListRequests: [], closesIssueRequests: [], perIssueRequests: [],
+});
 
 async function start({ port = 0, quiet = false } = {}) {
   const log = (...a) => { if (!quiet) console.log(...a); };
@@ -147,6 +186,10 @@ async function start({ port = 0, quiet = false } = {}) {
       if (!state.hangIssues) held.splice(0).forEach(respond => respond());
       return send(200, { hangIssues: state.hangIssues });
     }
+    if (p === '/__mr-transition') {
+      const event = url.searchParams.get('event');
+      return advanceMrFixture(state, event) ? send(200, { event }) : send(409, { message: `mock: cannot apply ${event}` });
+    }
     if (p === '/__push') {
       state.pushed++;
       const t = makeTodo({
@@ -173,13 +216,51 @@ async function start({ port = 0, quiet = false } = {}) {
       state.issuesQuery = Object.fromEntries(url.searchParams);
       // GitLab と同じく per_page で切る（既定 20）。x-total は切る前の総数
       const respond = () => {
-        const total = state.assignedTotal ?? String(state.issues.length);
-        const rows = state.issues.slice(0, Number(url.searchParams.get('per_page')) || 20);
+        const requestedState = url.searchParams.get('state');
+        const matches = state.issues.filter(i => !requestedState || requestedState === 'all' || requestedState === i.state);
+        const total = state.assignedTotal ?? String(matches.length);
+        const rows = matches.slice(0, Number(url.searchParams.get('per_page')) || 20);
         send(200, rows, total === 'none' ? {} : { 'x-total': total });
       };
       if (state.hangIssues) { held.push(respond); return; }
       return respond();
     }
+    const pageOf = rows => {
+      // 小さいモックでも実際のページ送りを検証できるよう、上限を 1 件にする。
+      const page = Math.max(1, Number(url.searchParams.get('page')) || 1);
+      return send(200, rows.slice(page - 1, page), {
+        'x-next-page': page < rows.length ? String(page + 1) : '',
+        'x-total': String(rows.length),
+      });
+    };
+    const listMr = p.match(/^\/api\/v4\/projects\/(\d+)\/merge_requests$/);
+    if (listMr && req.method === 'GET') {
+      const projectId = Number(listMr[1]);
+      const query = Object.fromEntries(url.searchParams);
+      const after = Date.parse(query.updated_after);
+      const before = Date.parse(query.updated_before);
+      const rows = state.mrs.filter(({ row }) => row.project_id === projectId
+        && (query.state === 'all' || row.state === query.state)
+        && Date.parse(row.updated_at) >= after && Date.parse(row.updated_at) <= before)
+        .sort((a, b) => a.row.updated_at.localeCompare(b.row.updated_at) || a.row.id - b.row.id)
+        .map(({ row, path }) => ({ ...row, web_url: `${base}/${path}/-/merge_requests/${row.iid}` }));
+      state.mrListRequests.push({ projectId, query, matched: rows.map(r => r.iid) });
+      if (state.fail.mergeRequests) return send(state.fail.mergeRequests, { message: 'mock failure' });
+      if (!Number.isFinite(after) || !Number.isFinite(before) || after > before) return send(400, { message: 'mock: invalid MR time range' });
+      return pageOf(rows);
+    }
+    const closesIssues = p.match(/^\/api\/v4\/projects\/(\d+)\/merge_requests\/(\d+)\/closes_issues$/);
+    if (closesIssues && req.method === 'GET') {
+      const projectId = Number(closesIssues[1]);
+      const iid = Number(closesIssues[2]);
+      state.closesIssueRequests.push({ projectId, iid, page: Number(url.searchParams.get('page')) || 1 });
+      if (state.fail.closesIssues) return send(state.fail.closesIssues, { message: 'mock failure' });
+      const mr = state.mrs.find(({ row }) => row.project_id === projectId && row.iid === iid);
+      if (!mr) return send(404, { message: 'mock: MR not found' });
+      return pageOf(mr.closes.map(id => state.issues.find(i => i.id === id)
+        ?? makeIssue({ id, iid: id, title: '自分の担当ではない Issue' })));
+    }
+    if (/^\/api\/v4\/projects\/\d+\/issues\/\d+(?:\/|$)/.test(p)) state.perIssueRequests.push(p);
     const done = p.match(/^\/api\/v4\/todos\/(\d+)\/mark_as_done$/);
     if (done && req.method === 'POST') {
       const id = Number(done[1]);
@@ -204,6 +285,11 @@ async function start({ port = 0, quiet = false } = {}) {
     setAssignedTotal: n => fetch(`${url}/__assigned-total${n == null ? '' : `?n=${n}`}`).then(r => r.json()),
     setAssignedCount: n => fetch(`${url}/__assigned-count${n == null ? '' : `?n=${n}`}`).then(r => r.json()),
     hangIssues: on => fetch(`${url}/__hang-issues?on=${on ? 1 : 0}`).then(r => r.json()),
+    transitionMr: async event => {
+      const r = await fetch(`${url}/__mr-transition?event=${event}`);
+      if (!r.ok) throw new Error(`MR fixture ${event}: HTTP ${r.status}`);
+      return r.json();
+    },
     close: () => new Promise(r => { server.close(r); server.closeAllConnections(); }),
   };
 }
