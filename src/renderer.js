@@ -32,8 +32,7 @@ function el(tag, cls, text) {
 }
 
 // 選択肢を並べ、クリックで filter[key] を切り替える。消えた選択肢は 'all' に戻す
-// toneOf を渡すと、各選択肢の先頭にラベルと同じ色の点を付ける（色と絞り込みを対応させるため）
-function renderChips(container, key, entries, labelOf = v => v, titleOf = () => '', toneOf = null) {
+function renderChips(container, key, entries, labelOf = v => v, titleOf = () => '') {
   if (filter[key] !== 'all' && !entries.has(filter[key])) filter[key] = 'all';
   container.replaceChildren();
   if (entries.size === 0) return;
@@ -41,8 +40,6 @@ function renderChips(container, key, entries, labelOf = v => v, titleOf = () => 
   for (const [value, n] of [['all', total], ...entries]) {
     const label = value === 'all' ? tr(lang, 'all') : labelOf(value);
     const c = el('span', `chip${filter[key] === value ? ' active' : ''}`);
-    const tone = value === 'all' ? null : toneOf?.(value);
-    if (tone) c.append(el('i', `dot t-${tone}`));
     c.append(`${label} ${n}`);
     c.title = value === 'all' ? '' : titleOf(value);
     c.onclick = () => { filter[key] = value; render(current); };
@@ -61,9 +58,7 @@ function renderTodos(todos, error) {
   renderChips($('#todoRepos'), 'todoRepo', countBy(todos, t => todoRepo(t, lang)), shortName, p => p);
   const inRepo = todos.filter(t => filter.todoRepo === 'all' || todoRepo(t, lang) === filter.todoRepo);
   const actionOf = t => actionLabel(lang, t.action_name);
-  // チップはラベルでまとめているので、色も引けるよう ラベル → 色 を覚えておく
-  const toneOfAction = new Map(inRepo.map(t => [actionOf(t), actionTone(t.action_name)]));
-  renderChips($('#actions'), 'action', countBy(inRepo, actionOf), undefined, () => '', v => toneOfAction.get(v));
+  renderChips($('#actions'), 'action', countBy(inRepo, actionOf));
   const shown = inRepo.filter(t => filter.action === 'all' || actionOf(t) === filter.action);
 
   const ul = $('#todos');
@@ -77,18 +72,18 @@ function renderTodos(todos, error) {
     const ref = todoRef(t);
     title.append(`${TYPES[t.target_type] ?? t.target_type}${ref ? ` ${ref}` : ''} ${t.target?.title ?? ''}`);
     const meta = el('div', 'meta');
-    // アサインは期限を表示（Issue の期限、なければマイルストーンの期限）
-    if (t.action_name === 'assigned') {
-      const due = dueInfoOr(t, lang);
-      if (due) meta.append(el('span', due.cls, due.text), ' · ');
-    }
     meta.append(`${t.project?.name_with_namespace ?? t.group?.full_name ?? ''} · ${t.author?.name ?? ''} · ${ago(t.created_at, { lang })}`);
     main.append(title, meta);
     if (t.body) main.append(el('div', 'body', t.body));
+    // 作業アイテムタブと同じく、期限は行の右端（末尾の枠）にまとめる。
+    // アサインだけ期限を出す（Issue の期限、なければマイルストーンの期限）
+    const trail = el('div', 'trail');
+    const due = t.action_name === 'assigned' ? dueInfoOr(t, lang) : null;
+    if (due) trail.append(el('span', due.cls, due.text));
     const btn = el('button', null, tr(lang, 'done'));
     btn.title = lang === 'en' ? 'Mark this To-Do as done on GitLab' : 'GitLab 上で To-Do を完了にする';
     btn.onclick = e => { e.stopPropagation(); btn.disabled = true; window.api.done(t.id); };
-    li.append(main, btn);
+    li.append(main, trail, btn);
     li.onclick = () => window.api.open(t.target_url);
     ul.append(li);
   }
@@ -119,12 +114,9 @@ function externalLink(link, url) {
 }
 
 function relatedMrBadge(mr, issueKey) {
-  const [label, tone] = mr.state === 'merged' ? ['mrMerged', 'review']
-    : mr.state === 'closed' ? ['mrClosed', 'danger']
-      : mr.draft ? ['mrDraft', 'muted']
-        : mr.state === 'opened' ? ['mrOpen', 'ok'] : ['mrUnknown', 'muted'];
-  const status = tr(lang, label);
-  const link = el('a', `related-mr-link tag t-${tone}`);
+  const kind = mrStatus(mr);
+  const status = tr(lang, MR_STATUS_LABELS[kind]);
+  const link = el('a', `related-mr-link mr-status s-${kind}`);
   link.dataset.mrKey = itemKey(mr);
   link.dataset.assignedFocus = `${issueKey}:mr:${link.dataset.mrKey}`;
   link.title = mr.title;
@@ -134,16 +126,11 @@ function relatedMrBadge(mr, issueKey) {
   return link;
 }
 
-const MR_EVENT_LABELS = {
-  issued: ['mrIssued', 'mention'], merged: ['mrMerged', 'review'],
-  closed: ['mrClosed', 'danger'], reopened: ['mrReopened', 'ok'],
-};
-
 function renderRecentMrUpdates(updates, syncError) {
   const rows = [];
   for (const { issue, mr, type, at } of updates) {
-    if (!issue || !mr || !Object.hasOwn(MR_EVENT_LABELS, type)) continue;
-    const [label, tone] = MR_EVENT_LABELS[type];
+    if (!issue || !mr || !Object.hasOwn(MR_EVENTS, type)) continue;
+    const [label, kind] = MR_EVENTS[type];
     const row = el('li', 'recent-mr-update');
     row.dataset.eventType = type;
     const links = el('div', 'recent-mr-links');
@@ -159,7 +146,7 @@ function renderRecentMrUpdates(updates, syncError) {
     arrow.setAttribute('aria-hidden', 'true');
     links.append(issueLink, arrow, mrLink);
     const detail = el('div', 'recent-mr-detail');
-    detail.append(el('span', `recent-mr-event tag t-${tone}`, tr(lang, label)));
+    detail.append(el('span', `recent-mr-event mr-status s-${kind}`, tr(lang, label)));
     if (at && Number.isFinite(Date.parse(at))) {
       const time = el('time', 'recent-mr-time', ago(at, { lang }));
       time.dateTime = at;
@@ -192,14 +179,16 @@ function assignedRow(i, relatedMrsByIssue) {
   const title = el('div', 'title');
   title.append(el('span', `tag t-${workItemTone(workItemType(i))}`, workItemTypeLabel(lang, workItemType(i))), `#${i.iid} ${i.title}`);
   const meta = el('div', 'meta');
-  if (i.due_date) {
-    const due = dueInfo(i.due_date, { lang });
-    meta.append(el('span', due.cls, due.text), ' · ');
-  }
   meta.append(`${issueRepo(i)}${i.labels?.length ? ` · ${i.labels.join(', ')}` : ''}`);
   issueLink.append(title, meta);
   main.append(issueLink);
-  li.append(main);
+  // 期限は行の右端（末尾の枠）にまとめ、縦に流し見したとき急ぎの行を拾えるようにする
+  const trail = el('div', 'trail');
+  if (i.due_date) {
+    const due = dueInfo(i.due_date, { lang });
+    trail.append(el('span', due.cls, due.text));
+  }
+  li.append(main, trail);
   li.onclick = () => window.api.open(i.web_url);
   if (key && workItemType(i) === 'issue') {
     li.dataset.issueKey = key;
@@ -220,7 +209,7 @@ function renderAssigned(items, limited, total, error, relatedMrsByIssue = {}) {
   const inRepo = items.filter(i => filter.assignedRepo === 'all' || issueRepo(i) === filter.assignedRepo);
   // 種別が 1 つ以下なら選ぶ意味がないので行ごと隠す（空の Map を渡すと選択も 'all' に戻る）
   const types = countBy(inRepo, workItemType);
-  renderChips($('#assignedTypes'), 'assignedType', types.size >= 2 ? types : new Map(), v => workItemTypeLabel(lang, v), () => '', v => workItemTone(v));
+  renderChips($('#assignedTypes'), 'assignedType', types.size >= 2 ? types : new Map(), v => workItemTypeLabel(lang, v));
   const shown = inRepo.filter(i => filter.assignedType === 'all' || workItemType(i) === filter.assignedType);
   $('#assignedTab').textContent = assignedTabLabel(items, { lang, total });
   $('#assignedLimit').classList.toggle('hidden', !limited);

@@ -116,6 +116,15 @@ async function shot(name) {
   console.log(`        → ${path.relative(REPO, file)}`);
 }
 
+// 配色の確認用に、同じ画面を暗い画面と明るい画面の両方で撮る（#18）
+async function shotSchemes(name) {
+  for (const scheme of ['dark', 'light']) {
+    await cdp.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: scheme }] });
+    await shot(`${name}-${scheme}.png`);
+  }
+  await cdp.send('Emulation.setEmulatedMedia', { features: [] });
+}
+
 let app = null;
 let m = null;
 
@@ -168,19 +177,19 @@ let m = null;
   const tags = await evl(`[...document.querySelectorAll('#todos .tag')].map(e => e.textContent).join(',')`);
   check('種別ラベル', tags === 'レビュー依頼,アサイン,メンション,アサイン', tags);
 
-  // 通知の種類ごとに色が変わっているか（#14）
+  // #18: To-Do の種類は分類なので無彩色の1色。期限は行の右端、絞り込みチップに色の点は付けない
   const tagTones = await evl(`[...document.querySelectorAll('#todos .tag')].map(e => [...e.classList].find(c => c.startsWith('t-'))).join(',')`);
-  check('種別ラベルが種類ごとに色分け', tagTones === 't-review,t-assign,t-mention,t-assign', tagTones);
-  const tagColors = await evl(`[...new Set([...document.querySelectorAll('#todos .tag')].map(e => getComputedStyle(e).color))].join(' / ')`);
-  check('ラベルの描画色が実際に 3 色分かれている', tagColors.split(' / ').length === 3, tagColors);
-  const actionDots = await count('#actions .dot');
-  check('種別のチップにも同じ色の点が付く', actionDots === 3, String(actionDots));
-  // 開発機が暗い画面だと明るい画面用の配色を検証できないので、この項目だけ prefers-color-scheme を偽装する
-  await cdp.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: 'light' }] });
-  const tagColorsLight = await evl(`[...new Set([...document.querySelectorAll('#todos .tag')].map(e => getComputedStyle(e).color))].join(' / ')`);
-  check('明るい画面用の配色でも 3 色分かれる',
-    tagColorsLight.split(' / ').length === 3 && tagColorsLight !== tagColors, tagColorsLight);
+  check('To-Do の種類ラベルは無彩色', tagTones === 't-muted,t-muted,t-muted,t-muted', tagTones);
+  for (const scheme of ['dark', 'light']) {
+    await cdp.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: scheme }] });
+    const colors = await evl(`[...new Set([...document.querySelectorAll('#todos .tag')].map(e => getComputedStyle(e).color))]`);
+    const [r, g, b] = (colors[0] ?? '').match(/\d+/g)?.map(Number) ?? [0, 255, 0];
+    check(`[${scheme}] To-Do の種類ラベルは無彩色の1色`, colors.length === 1 && Math.max(r, g, b) - Math.min(r, g, b) < 32, JSON.stringify(colors));
+  }
   await cdp.send('Emulation.setEmulatedMedia', { features: [] });
+  check('To-Do の絞り込みチップに色の点を付けない', (await count('#actions .dot')) === 0);
+  const todoTrail = await evl(`[...document.querySelectorAll('#todos > li')].map(li => li.querySelector(':scope > .trail > .due') ? 'R' : li.querySelector('.due') ? 'L' : '-').join('')`);
+  check('To-Do の期限も行の右端（完了ボタンの左）に出る', todoTrail === '-R-R', todoTrail);
 
   const meta = await evl(`[...document.querySelectorAll('#todos .meta')].map(e => e.textContent).join('|')`);
   check('経過時間（たった今/時間前/日前）',
@@ -191,6 +200,7 @@ let m = null;
     && todoTitles.includes('アサインIssue #17 タスクバーのバッジが二重に表示される')
     && todoTitles.includes('アサインWork item #21 リリース手順の整理'), todoTitles);
   await shot('01-list.png');
+  await shotSchemes('ui-list');
 
   // 4) 期限の色分け
   const over = await count('#todos .due.over');
@@ -234,11 +244,12 @@ let m = null;
   const typeTags = await evl(`[...document.querySelectorAll(${JSON.stringify(itemTags)})].map(e => e.textContent).join(',')`);
   check('行頭に種別タグ（issue_type なしは Issue）',
     typeTags === 'Issue,Issue,タスク,Issue,Issue,タスク,インシデント', typeTags);
+  // #18: 種別は分類なので無彩色。インシデントだけが「危険」の意味で強調される
   const typeTones = await evl(`[...document.querySelectorAll(${JSON.stringify(itemTags)})].map(e => [...e.classList].find(c => c.startsWith('t-'))).join(',')`);
-  check('作業アイテムの種別も色分け', typeTones === 't-mention,t-mention,t-assign,t-mention,t-mention,t-assign,t-danger', typeTones);
-  const typeColors = await evl(`[...new Set([...document.querySelectorAll(${JSON.stringify(itemTags)})].map(e => getComputedStyle(e).color))].join(' / ')`);
-  check('作業アイテムの描画色が 3 色分かれている', typeColors.split(' / ').length === 3, typeColors);
-  check('種別チップに色の点が付く', (await count('#assignedTypes .dot')) === 3, String(await count('#assignedTypes .dot')));
+  check('作業アイテムの種別はインシデントだけ強調', typeTones === 't-muted,t-muted,t-muted,t-muted,t-muted,t-muted,t-danger', typeTones);
+  check('種別チップに色の点を付けない', (await count('#assignedTypes .dot')) === 0, String(await count('#assignedTypes .dot')));
+  const trailDue = await evl(`[...document.querySelectorAll(${JSON.stringify(ROWS)})].map(li => li.querySelector(':scope > .trail > .due') ? 'R' : li.querySelector('.due') ? 'L' : '-').join('')`);
+  check('期限は行の右端（末尾の枠）に出る', trailDue === 'RRRR---', trailDue);
   const dueCls = await evl(`[...document.querySelectorAll(${JSON.stringify(ROWS)})].map(li => li.querySelector('.due')?.className ?? '-').join('|')`);
   check('作業アイテムの期限の色分け（期限なしは期限を出さない）', dueCls === 'due over|due soon|due soon|due|-|-|-', dueCls);
   const dueTexts = await evl(`[...document.querySelectorAll('#assignedItems .due')].map(e => e.textContent).join(' | ')`);
@@ -251,6 +262,35 @@ let m = null;
   const typeChips = await evl(`[...document.querySelectorAll('#assignedTypes .chip')].map(e => e.textContent).join('|')`);
   check('種別のチップ', typeChips === 'すべて 7|Issue 4|タスク 2|インシデント 1', typeChips);
   await shot('02-assigned.png');
+  await shotSchemes('ui-assigned');
+
+  // 配色の優先度（#18）: 期限超過が最も強く、絞り込みの選択中は警告色を使わず、MR 状態は種別ラベルと別の形
+  await waitFor('MR 状態のバッジ', `document.querySelector('#assignedItems .mr-status')`);
+  for (const scheme of ['dark', 'light']) {
+    await cdp.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: scheme }] });
+    const look = await evl(`(() => {
+      const s = q => getComputedStyle(document.querySelector(q));
+      const over = s('#assignedItems .due.over'), plain = s('#assignedItems .due:not(.soon):not(.over)');
+      const chip = s('#assignedTypes .chip.active'), tag = s(${JSON.stringify(itemTags)});
+      const mr = document.querySelector('#assignedItems .mr-status');
+      const tags = [...document.querySelectorAll(${JSON.stringify(itemTags)})].filter(e => !e.classList.contains('t-danger'));
+      return { overWeight: over.fontWeight, overColor: over.color, plainColor: plain.color, chipBg: chip.backgroundColor,
+        tagBg: tag.backgroundColor, tagColors: [...new Set(tags.map(e => getComputedStyle(e).color))],
+        mrText: mr && getComputedStyle(mr).color, mrMarkColor: mr && getComputedStyle(mr, '::before').color,
+        mrBorder: mr && getComputedStyle(mr).borderTopWidth, mrMark: mr && getComputedStyle(mr, '::before').content };
+    })()`);
+    // 無彩色の判定。補足文字のグレー（#6e7781 など）はわずかに青みがあり RGB の幅が 19 前後になるので、
+    // 有彩色（MR の緑・紫・赤は幅 100 以上）と確実に分けられる 32 未満を無彩色とみなす
+    const neutral = c => { const [r, g, b] = c.match(/\d+/g).map(Number); return Math.max(r, g, b) - Math.min(r, g, b) < 32; };
+    check(`[${scheme}] 期限超過は太字で通常の期限と色が違う`, Number(look.overWeight) >= 700 && look.overColor !== look.plainColor, JSON.stringify(look));
+    check(`[${scheme}] 絞り込みの選択中は無彩色（赤を使わない）`, neutral(look.chipBg), look.chipBg);
+    check(`[${scheme}] 種別ラベルは塗らず、インシデント以外は無彩色の1色`,
+      /rgba\(0, 0, 0, 0\)|transparent/.test(look.tagBg) && look.tagColors.length === 1 && neutral(look.tagColors[0]), JSON.stringify(look.tagColors));
+    check(`[${scheme}] MR 状態は枠なし・文字は控えめ・色は記号だけ`,
+      look.mrBorder === '0px' && neutral(look.mrText) && !neutral(look.mrMarkColor) && /[●○✓✕?]/.test(look.mrMark ?? ''),
+      `${look.mrBorder} / ${look.mrText} / ${look.mrMarkColor} / ${look.mrMark}`);
+  }
+  await cdp.send('Emulation.setEmulatedMedia', { features: [] });
 
   await clickChip('#assignedTypes', 'タスク');
   await waitFor('タスクのみ', `document.querySelectorAll(${JSON.stringify(ROWS)}).length === 2`);
@@ -325,6 +365,7 @@ let m = null;
   check('最近の更新欄は日本語で表示される',
     (await evl(`document.querySelector('#recentMrUpdatesTitle').textContent`)) === '最近の MR 更新');
   await shot('07-related-mrs-ja.png');
+  await shotSchemes('ui-mr-updates');
 
   const openedCount = await evlMain('globalThis.__opened.length');
   await click(`${mrBadge(2, 23, 2, 45)}`);
@@ -533,6 +574,15 @@ let m = null;
   check('ヒントも英語', hintEn.includes('DPAPI'), hintEn);
   await click('.tab[data-view=list]');
   await shot('05-english.png');
+  // README の 2 枚目（英語の作業アイテムタブ）。README は暗い画面で揃えている
+  await cdp.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: 'dark' }] });
+  await click('.tab[data-view=assigned]');
+  // header は flex なので折り返しは矩形の数でなく高さで見る（1 行なら約 24px）
+  const wrapped = await evl(`[...document.querySelectorAll('header .tab')].filter(t => t.offsetHeight > 30).map(t => t.textContent)`);
+  check('英語でもタブ名が折り返さない', wrapped.length === 0, JSON.stringify(wrapped));
+  await shot('08-assigned-en.png');
+  await click('.tab[data-view=list]');
+  await cdp.send('Emulation.setEmulatedMedia', { features: [] });
 
   await click('.tab[data-view=settings]');
   await evl(`${sel}.value = 'ja'; document.querySelector('#form').requestSubmit();`);

@@ -5,39 +5,71 @@
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'">
 <title>Notice Me, Senpai!</title>
 <style>
-  :root { color-scheme: light dark; --muted: #888; --line: #8884; --accent: #e24329; }
-  /* ラベルの色（明るい画面用）。暗い画面は下の prefers-color-scheme で差し替える */
-  .t-review { --tone: #6b3fc4; } .t-assign { --tone: #a85f08; } .t-mention { --tone: #1c5fd6; }
-  .t-warn { --tone: #9a4a12; } .t-danger { --tone: #c62828; } .t-ok { --tone: #16794c; }
-  .t-muted { --tone: #667085; }
+  /* 配色のルール（#18）
+     - 強調の色は少ないほど効く。強い色は「対応が必要なもの」だけ: 期限超過・期限間近・CI 失敗・インシデント
+     - To-Do の種類・作業アイテムの種別は「分類」で意味を持たないので無彩色。色は意味のあるものに取っておく
+     - MR の状態は GitHub / GitLab と同じ色の意味（オープン緑・マージ紫・クローズ赤）を記号だけに付け、文字は控えめに
+     - 色だけに頼らない（WCAG 1.4.1）: MR は記号、期限は文言でも分かる
+     - 行は「本文（タイトル・補足）」と「末尾（期限）」に分け、急ぎの情報は右端にそろえる（To-Do・作業アイテム共通）
+     - 絞り込みの選択中は無彩色の反転表示。赤は「危険」の意味にだけ使う */
+  :root {
+    color-scheme: light dark;
+    --text: #1f2328; --muted: #6e7781; --line: #d0d7de; --row-hover: #f3f4f6; --band: #f6f8fa;
+    --danger: #c62828; --soon: #b35900;
+    --chip-on-bg: #24292f; --chip-on-fg: #fff;
+  }
   @media (prefers-color-scheme: dark) {
-    .t-review { --tone: #b39ddb; } .t-assign { --tone: #ffb74d; } .t-mention { --tone: #8ab4ff; }
-    .t-warn { --tone: #ffab91; } .t-danger { --tone: #ef9a9a; } .t-ok { --tone: #81c784; }
-    .t-muted { --tone: #9aa0a6; }
+    :root {
+      --text: #e6edf3; --muted: #8b949e; --line: #30363d; --row-hover: #ffffff0d; --band: #ffffff08;
+      --danger: #ff7b72; --soon: #e3a03d;
+      --chip-on-bg: #e6edf3; --chip-on-fg: #0d1117;
+    }
+  }
+  /* 種別ラベルの色（明るい画面用）。分類は無彩色、対応が必要なものだけ danger */
+  .t-danger { --tone: #c62828; } .t-muted { --tone: #6e7781; }
+  @media (prefers-color-scheme: dark) {
+    .t-danger { --tone: #ff7b72; } .t-muted { --tone: #8b949e; }
+  }
+  /* MR の状態（明るい画面用）。種別ラベルの .t-* とは名前も見た目も分ける */
+  .s-open { --status: #1a7f37; } .s-draft { --status: #6e7781; } .s-merged { --status: #8250df; }
+  .s-closed { --status: #c62828; } .s-unknown { --status: #6e7781; }
+  @media (prefers-color-scheme: dark) {
+    .s-open { --status: #3fb950; } .s-draft { --status: #8b949e; } .s-merged { --status: #a371f7; }
+    .s-closed { --status: #ff7b72; } .s-unknown { --status: #8b949e; }
   }
   * { box-sizing: border-box; }
-  body { margin: 0; font: 13px "Segoe UI", "Yu Gothic UI", sans-serif; }
+  body { margin: 0; font: 13px "Segoe UI", "Yu Gothic UI", sans-serif; color: var(--text); }
   header { display: flex; gap: 8px; align-items: center; padding: 8px 10px; border-bottom: 1px solid var(--line); }
-  header .tab { cursor: pointer; padding: 4px 8px; border-radius: 4px; }
-  header .tab.active { background: var(--line); }
+  header .tab { cursor: pointer; padding: 4px 8px; border-radius: 4px; color: var(--muted); white-space: nowrap; flex-shrink: 0; }
+  header .tab.active { background: var(--band); color: var(--text); font-weight: 600; box-shadow: inset 0 -2px 0 var(--text); border-radius: 4px 4px 0 0; }
   header .spacer { flex: 1; }
-  #status { color: var(--muted); font-size: 12px; }
-  #error { color: #d33; padding: 6px 10px; display: none; }
+  /* 幅が足りないときは、タブではなく件数・時刻の表示を省略する */
+  #status { color: var(--muted); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+  #refresh { flex-shrink: 0; }
+  #error { color: var(--danger); padding: 6px 10px; display: none; }
   ul { list-style: none; margin: 0; padding: 0; }
   li { display: flex; gap: 8px; padding: 8px 10px; border-bottom: 1px solid var(--line); cursor: pointer; }
-  li:hover { background: #8881; }
+  li:hover { background: var(--row-hover); }
   li .main { flex: 1; min-width: 0; }
   li .title { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   li .meta, li .body { color: var(--muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .tag { display: inline-block; padding: 0 6px; border-radius: 3px; font-size: 11px; line-height: 15px; margin-right: 4px;
-         color: var(--tone, var(--muted)); background: color-mix(in srgb, var(--tone, #888) 15%, transparent);
-         border: 1px solid color-mix(in srgb, var(--tone, #888) 40%, transparent); }
-  .dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; vertical-align: middle;
-         margin-right: 5px; background: var(--tone, var(--muted)); }
+  /* 種別ラベルは背景を塗らず、枠線と文字色だけ。行の主役（タイトル・期限）より目立たせない */
+  .tag { display: inline-block; padding: 0 5px; border-radius: 3px; font-size: 11px; font-weight: 400; line-height: 15px; margin-right: 5px;
+         color: var(--tone, var(--muted)); background: none;
+         border: 1px solid color-mix(in srgb, var(--tone, #888) 45%, transparent); }
+  /* 対応が必要な種類（CI 失敗・インシデントなど）だけは塗りで強調する */
+  .tag.t-danger { color: #fff; background: var(--danger); border-color: var(--danger); }
+  @media (prefers-color-scheme: dark) { .tag.t-danger { color: #0d1117; } }
+  /* MR の状態: 枠も塗りもなし。色は先頭の記号だけに付け、文字は補足と同じ控えめな色 */
+  .mr-status { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; line-height: 16px;
+               color: var(--muted); white-space: nowrap; }
+  .mr-status::before { color: var(--status); font-size: 11px; line-height: 1; }
+  .s-open::before { content: '●'; } .s-draft::before { content: '○'; } .s-merged::before { content: '✓'; }
+  .s-closed::before { content: '✕'; } .s-unknown::before { content: '?'; }
   button { font: inherit; padding: 3px 10px; cursor: pointer; }
   li button { align-self: center; }
   .empty { padding: 24px; text-align: center; color: var(--muted); }
-  li.separator { padding: 4px 10px; color: var(--muted); font-size: 12px; font-weight: 600; background: #8881; cursor: default; }
+  li.separator { padding: 4px 10px; color: var(--muted); font-size: 12px; font-weight: 600; background: var(--band); cursor: default; }
   #assignedLimit { padding: 4px 10px; border-bottom: 1px solid var(--line); }
   .assigned-item-link, .recent-mr-links a { color: inherit; }
   .assigned-item-link, .related-mr-link, .recent-mr-links a { text-decoration: none; }
@@ -45,10 +77,13 @@
   .assigned-item-link { display: block; }
   .assigned-item-link:focus-visible, .related-mr-link:focus-visible,
   .recent-mr-links a:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
-  .related-mr-badges { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
-  .related-mr-badges .tag, .recent-mr-detail .tag { margin-right: 0; white-space: nowrap; }
-  #recentMrUpdates { background: #8881; }
-  #recentMrUpdatesTitle { margin: 0; padding: 6px 10px 3px; font-size: 12px; font-weight: 600; }
+  .related-mr-badges { display: flex; flex-wrap: wrap; gap: 2px 12px; margin-top: 3px; }
+  /* 行の末尾の枠（期限）。本文が省略されても、期限は右端で必ず読める */
+  li > .trail { flex-shrink: 0; text-align: right; font-size: 12px; white-space: nowrap; padding-top: 1px; }
+  li > .trail:empty { display: none; }
+  #recentMrUpdates { background: var(--band); border-bottom: 1px solid var(--line); }
+  #recentMrUpdatesTitle { margin: 0; padding: 6px 10px 3px; font-size: 11px; font-weight: 600; color: var(--muted); }
+  #recentMrUpdatesList > li { border-bottom: none; }
   #recentMrUpdatesList { max-height: 144px; overflow-y: auto; }
   .recent-mr-update { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; padding-block: 5px; cursor: default; }
   .recent-mr-links { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); gap: 6px; align-items: center; }
@@ -56,15 +91,18 @@
   .recent-mr-arrow, .recent-mr-time { color: var(--muted); }
   .recent-mr-detail { display: flex; align-items: center; gap: 6px; white-space: nowrap; }
   .recent-mr-time { font-size: 11px; }
-  #mrSyncError { margin: 0; padding: 5px 10px; border-bottom: 1px solid var(--line); color: var(--tone); }
+  #mrSyncError { margin: 0; padding: 5px 10px; border-bottom: 1px solid var(--line); color: var(--soon); }
   .bar { display: flex; flex-wrap: wrap; gap: 4px; padding: 6px 10px; border-bottom: 1px solid var(--line); }
   .bar:empty { display: none; }
-  .chip { cursor: pointer; padding: 1px 8px; border: 1px solid var(--line); border-radius: 10px; font-size: 12px; white-space: nowrap; }
-  .chip.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+  /* 絞り込みは無彩色。選択中だけ反転させ、色の意味（危険・種別）と混ぜない */
+  .chip { cursor: pointer; padding: 1px 8px; border: 1px solid var(--line); border-radius: 10px; font-size: 12px; white-space: nowrap; color: var(--muted); }
+  .chip:hover { color: var(--text); }
+  .chip.active { background: var(--chip-on-bg); border-color: var(--chip-on-bg); color: var(--chip-on-fg); }
   .repos .chip { border-radius: 4px; }
-  .due { font-weight: 600; }
-  .due.soon { color: #e8a317; }
-  .due.over { color: #d33; }
+  /* 期限: 通常は控えめ、間近は橙、超過は赤＋太字。優先度の一番高い情報 */
+  .due { color: var(--muted); }
+  .due.soon { color: var(--soon); font-weight: 600; }
+  .due.over { color: var(--danger); font-weight: 700; }
   form { padding: 12px; display: grid; gap: 10px; }
   label { display: grid; gap: 4px; }
   label.check { display: flex; gap: 6px; align-items: center; }
@@ -95,7 +133,7 @@
     <h2 id="recentMrUpdatesTitle" data-i18n="recentMrUpdates"></h2>
     <ul id="recentMrUpdatesList"></ul>
   </section>
-  <p id="mrSyncError" class="hint t-warn" data-i18n="mrSyncError" hidden></p>
+  <p id="mrSyncError" class="hint" data-i18n="mrSyncError" hidden></p>
   <div class="bar repos" id="assignedRepos"></div>
   <div class="bar" id="assignedTypes"></div>
   <div class="hint hidden" id="assignedLimit"></div>

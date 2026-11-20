@@ -4,6 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const {
   LANGS, CONFIG_DEFAULTS, TYPES, UI, ACTIONS, WORK_ITEM_TYPES, ACTION_TONES, WORK_ITEM_TONES, ASSIGNED_LIMIT, tr, actionLabel, actionTone, workItemTone,
+  MR_STATUS_LABELS, MR_EVENTS, mrStatus,
   apiUrl, mergeConfig, intervalSec, freshTodos, todoRepo, issueRepo, shortName, dueInfo, ago,
   todoRef, workItemType, workItemTypeLabel, splitByDue, countOverdue, reachedLimit, assignedPatch, assignedTabLabel,
 } = require('../src/lib.js');
@@ -331,19 +332,21 @@ test('ACTION_TONES: 日英で action_name の一覧がズレていない', () =>
   assert.deepEqual(Object.keys(ACTIONS.en).sort(), Object.keys(ACTIONS.ja).sort());
 });
 
-test('actionTone: 未知の action_name は無色', () => {
-  assert.equal(actionTone('review_requested'), 'review');
-  assert.equal(actionTone('assigned'), 'assign');
-  assert.equal(actionTone('mentioned'), 'mention');
-  assert.equal(actionTone('directly_addressed'), 'mention');
+test('actionTone: 分類は無彩色、壊れているものだけ danger（#18）', () => {
+  assert.equal(actionTone('review_requested'), 'muted');
+  assert.equal(actionTone('assigned'), 'muted');
+  assert.equal(actionTone('mentioned'), 'muted');
   assert.equal(actionTone('build_failed'), 'danger');
+  assert.equal(actionTone('unmergeable'), 'danger');
   assert.equal(actionTone('何らかの新しいアクション'), 'muted');
+  assert.deepEqual([...new Set(Object.values(ACTION_TONES))].sort(), ['danger', 'muted']);
 });
 
 test('workItemTone: 翻訳を持つ種別は必ず色を持つ', () => {
   const missing = Object.keys(WORK_ITEM_TYPES.ja).filter(k => !WORK_ITEM_TONES[k]);
   assert.deepEqual(missing, [], `色が付いていない issue_type: ${missing.join(', ')}`);
   assert.equal(workItemTone('incident'), 'danger');
+  assert.equal(workItemTone('issue'), 'muted');
   assert.equal(workItemTone('unknown_type'), 'muted');
 });
 
@@ -351,9 +354,36 @@ test('色クラスは CSS に明るい画面用と暗い画面用の両方があ
   const css = fs.readFileSync(path.join(__dirname, '..', 'src', 'index.html'), 'utf8');
   const tones = new Set([...Object.values(ACTION_TONES), ...Object.values(WORK_ITEM_TONES)]);
   for (const tone of tones) {
-    const n = [...css.matchAll(new RegExp(`\\.t-${tone}\\s*\\{`, 'g'))].length;
+    // 色の定義だけを数える（`.tag.t-danger` のような見た目の上書きは除く）
+    const n = [...css.matchAll(new RegExp(`(?<![\\w-])\\.t-${tone}\\s*\\{`, 'g'))].length;
     assert.equal(n, 2, `.t-${tone} が CSS に ${n} 個しか無い（明るい画面用と暗い画面用の 2 つ必要）`);
   }
+});
+
+// ---------- MR の状態（#18） ----------
+test('mrStatus: 状態と下書きを見た目の種類に寄せる', () => {
+  assert.equal(mrStatus({ state: 'opened' }), 'open');
+  assert.equal(mrStatus({ state: 'opened', draft: true }), 'draft');
+  assert.equal(mrStatus({ state: 'merged', draft: true }), 'merged');
+  assert.equal(mrStatus({ state: 'closed' }), 'closed');
+  assert.equal(mrStatus({ state: 'locked' }), 'unknown');
+});
+
+test('MR の状態と更新の種類は、文言と CSS（明暗 2 つ＋記号）を必ず持つ', () => {
+  const css = fs.readFileSync(path.join(__dirname, '..', 'src', 'index.html'), 'utf8');
+  const kinds = new Set([...Object.keys(MR_STATUS_LABELS), ...Object.values(MR_EVENTS).map(([, k]) => k)]);
+  for (const kind of kinds) {
+    assert.ok(MR_STATUS_LABELS[kind], `${kind} の文言がない`);
+    assert.equal([...css.matchAll(new RegExp(`\\.s-${kind}\\s*\\{`, 'g'))].length, 2, `.s-${kind} は明暗 2 つ必要`);
+    assert.match(css, new RegExp(`\\.s-${kind}::before\\s*\\{\\s*content:`), `.s-${kind} に記号がない`);
+  }
+  for (const [label] of Object.values(MR_EVENTS)) assert.ok(UI.ja[label] && UI.en[label], `${label} の訳がない`);
+});
+
+test('配色: 絞り込みの選択中に警告色（赤）を使わない', () => {
+  const css = fs.readFileSync(path.join(__dirname, '..', 'src', 'index.html'), 'utf8');
+  const rule = css.match(/\.chip\.active\s*\{([^}]*)\}/)[1];
+  assert.doesNotMatch(rule, /danger|accent|#e24329/);
 });
 
 // ---------- 言語設定が見つけられるか ----------
