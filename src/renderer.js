@@ -102,9 +102,93 @@ function dueInfoOr(t, lang) {
 }
 
 // ---------- 作業アイテムタブ ----------
-function assignedRow(i) {
+const validItemId = n => Number.isSafeInteger(n) && n > 0;
+const itemKey = i => `${i.project_id}:${i.iid}`;
+
+function externalLink(link, url) {
+  // 不正なスキームをリンクに設定しない。通常のクリックや Enter は既存の外部ブラウザ経路を使う。
+  if (typeof url !== 'string' || !/^https?:\/\//i.test(url)) return;
+  link.href = url;
+  const open = e => {
+    e.preventDefault();
+    e.stopPropagation();
+    window.api.open(url);
+  };
+  link.onclick = open;
+  link.onauxclick = e => { if (e.button === 1) open(e); };
+}
+
+function relatedMrBadge(mr, issueKey) {
+  const [label, tone] = mr.state === 'merged' ? ['mrMerged', 'review']
+    : mr.state === 'closed' ? ['mrClosed', 'danger']
+      : mr.draft ? ['mrDraft', 'muted']
+        : mr.state === 'opened' ? ['mrOpen', 'ok'] : ['mrUnknown', 'muted'];
+  const status = tr(lang, label);
+  const link = el('a', `related-mr-link tag t-${tone}`);
+  link.dataset.mrKey = itemKey(mr);
+  link.dataset.assignedFocus = `${issueKey}:mr:${link.dataset.mrKey}`;
+  link.title = mr.title;
+  link.setAttribute('aria-label', tr(lang, 'mrLinkLabel', { iid: mr.iid, title: mr.title, state: status }));
+  externalLink(link, mr.web_url);
+  link.append(`!${mr.iid} `, el('span', 'related-mr-state', status));
+  return link;
+}
+
+const MR_EVENT_LABELS = {
+  issued: ['mrIssued', 'mention'], merged: ['mrMerged', 'review'],
+  closed: ['mrClosed', 'danger'], reopened: ['mrReopened', 'ok'],
+};
+
+function renderRecentMrUpdates(updates, syncError) {
+  const rows = [];
+  for (const { issue, mr, type, at } of updates) {
+    if (!issue || !mr || !Object.hasOwn(MR_EVENT_LABELS, type)) continue;
+    const [label, tone] = MR_EVENT_LABELS[type];
+    const row = el('li', 'recent-mr-update');
+    row.dataset.eventType = type;
+    const links = el('div', 'recent-mr-links');
+    const issueLink = el('a', 'recent-mr-issue-link', `#${issue.iid} ${issue.title}`);
+    const mrLink = el('a', 'recent-mr-link', `!${mr.iid} ${mr.title}`);
+    const eventKey = `${itemKey(issue)}:${itemKey(mr)}:${type}:${at}`;
+    for (const [link, target, suffix] of [[issueLink, issue, 'issue'], [mrLink, mr, 'mr']]) {
+      externalLink(link, target.web_url);
+      link.title = link.textContent;
+      link.dataset.assignedFocus = `recent:${eventKey}:${suffix}`;
+    }
+    const arrow = el('span', 'recent-mr-arrow', '→');
+    arrow.setAttribute('aria-hidden', 'true');
+    links.append(issueLink, arrow, mrLink);
+    const detail = el('div', 'recent-mr-detail');
+    detail.append(el('span', `recent-mr-event tag t-${tone}`, tr(lang, label)));
+    if (at && Number.isFinite(Date.parse(at))) {
+      const time = el('time', 'recent-mr-time', ago(at, { lang }));
+      time.dateTime = at;
+      time.title = new Date(at).toLocaleString(lang);
+      detail.append(time);
+    }
+    row.append(links, detail);
+    rows.push(row);
+  }
+  replaceAssignedRows($('#recentMrUpdatesList'), rows);
+  $('#recentMrUpdates').hidden = rows.length === 0;
+  $('#mrSyncError').hidden = !syncError;
+}
+
+function replaceAssignedRows(list, rows) {
+  const active = document.activeElement;
+  const focusKey = list.contains(active) ? active.dataset.assignedFocus : null;
+  list.replaceChildren(...rows);
+  if (focusKey) [...list.querySelectorAll('[data-assigned-focus]')]
+    .find(e => e.dataset.assignedFocus === focusKey)?.focus({ preventScroll: true });
+}
+
+function assignedRow(i, relatedMrsByIssue) {
   const li = el('li');
   const main = el('div', 'main');
+  const issueLink = el('a', 'assigned-item-link');
+  externalLink(issueLink, i.web_url);
+  const key = validItemId(i.project_id) && validItemId(i.iid) ? itemKey(i) : null;
+  if (key) issueLink.dataset.assignedFocus = `${key}:item`;
   const title = el('div', 'title');
   title.append(el('span', `tag t-${workItemTone(workItemType(i))}`, workItemTypeLabel(lang, workItemType(i))), `#${i.iid} ${i.title}`);
   const meta = el('div', 'meta');
@@ -113,13 +197,25 @@ function assignedRow(i) {
     meta.append(el('span', due.cls, due.text), ' · ');
   }
   meta.append(`${issueRepo(i)}${i.labels?.length ? ` · ${i.labels.join(', ')}` : ''}`);
-  main.append(title, meta);
+  issueLink.append(title, meta);
+  main.append(issueLink);
   li.append(main);
   li.onclick = () => window.api.open(i.web_url);
+  if (key && workItemType(i) === 'issue') {
+    li.dataset.issueKey = key;
+    const mrs = relatedMrsByIssue[key];
+    if (Array.isArray(mrs) && mrs.length) {
+      const badges = el('div', 'related-mr-badges');
+      badges.setAttribute('role', 'group');
+      badges.setAttribute('aria-label', tr(lang, 'relatedMrs'));
+      badges.append(...mrs.map(mr => relatedMrBadge(mr, key)));
+      main.append(badges);
+    }
+  }
   return li;
 }
 
-function renderAssigned(items, limited, total, error) {
+function renderAssigned(items, limited, total, error, relatedMrsByIssue = {}) {
   renderChips($('#assignedRepos'), 'assignedRepo', countBy(items, issueRepo), shortName, p => p);
   const inRepo = items.filter(i => filter.assignedRepo === 'all' || issueRepo(i) === filter.assignedRepo);
   // 種別が 1 つ以下なら選ぶ意味がないので行ごと隠す（空の Map を渡すと選択も 'all' に戻る）
@@ -130,12 +226,13 @@ function renderAssigned(items, limited, total, error) {
   $('#assignedLimit').classList.toggle('hidden', !limited);
   $('#assignedLimit').textContent = tr(lang, 'assignedLimit', { n: ASSIGNED_LIMIT });
 
-  const ul = $('#assignedItems');
-  ul.replaceChildren();
-  if (!shown.length && !error) ul.append(el('li', 'empty', tr(lang, 'emptyAssigned')));
   const { dated, undated } = splitByDue(shown);
-  ul.append(...dated.map(assignedRow));
-  if (undated.length) ul.append(el('li', 'separator', tr(lang, 'noDueDate')), ...undated.map(assignedRow));
+  const row = i => assignedRow(i, relatedMrsByIssue);
+  replaceAssignedRows($('#assignedItems'), [
+    ...(!shown.length && !error ? [el('li', 'empty', tr(lang, 'emptyAssigned'))] : []),
+    ...dated.map(row),
+    ...(undated.length ? [el('li', 'separator', tr(lang, 'noDueDate')), ...undated.map(row)] : []),
+  ]);
 }
 
 function render(s) {
@@ -146,7 +243,8 @@ function render(s) {
   $('#status').textContent = s.loading ? tr(lang, 'loading')
     : s.updatedAt ? `${tr(lang, 'statusCount', { n: s.count })} / ${new Date(s.updatedAt).toLocaleTimeString()}` : '';
   renderTodos(s.todos, s.error);
-  renderAssigned(s.assigned ?? [], s.assignedLimited, s.assignedTotal, s.error || s.assignedError);
+  renderRecentMrUpdates(s.recentMrUpdates ?? [], s.mrSyncError);
+  renderAssigned(s.assigned ?? [], s.assignedLimited, s.assignedTotal, s.error || s.assignedError, s.relatedMrsByIssue ?? {});
   drawBadge(s.count);
 }
 

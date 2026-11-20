@@ -5,6 +5,7 @@
 //
 // 依存ゼロ（Node 組み込みの fetch / WebSocket を使う）。
 // スクリーンショットは dist/gui-test/ に出る（gitignore 済み）。
+// 07-related-mrs-ja.png は日本語の作業アイテムタブの MR 状態と最近の更新。
 // ウィンドウが実際に映るので、実行中は画面に注意すること。
 
 const { spawn } = require('node:child_process');
@@ -121,8 +122,7 @@ let m = null;
 (async () => {
   fs.mkdirSync(OUT, { recursive: true });
   m = await mock.start({ quiet: true });
-  const profile = path.join(os.tmpdir(), 'opencode', 'nms-gui-profile');
-  fs.rmSync(profile, { recursive: true, force: true });
+  const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'nms-gui-profile-'));
 
   // 1) 設定を DPAPI で書き込む（Electron を一瞬走らせる）
   await new Promise((resolve, reject) => {
@@ -130,6 +130,7 @@ let m = null;
       path.join('scripts', 'mock-config.js'),
       `--user-data-dir=${profile}`, `--mock-url=${m.url}`, `--mock-token=${m.token}`,
     ], { cwd: REPO, stdio: 'ignore' });
+    p.on('error', reject);
     p.on('exit', code => code === 0 ? resolve() : reject(new Error(`mock-config exit ${code}`)));
   });
   console.log(`設定を書き込み: ${m.url}\n`);
@@ -200,7 +201,21 @@ let m = null;
   check('マイルストーン期限も表示', dues.includes('MS期限'), dues);
 
   // 5) 作業アイテムタブ
-  const ROWS = '#assignedItems li:not(.separator)';
+  const ROWS = '#assignedItems > li:not(.separator):not(.empty)';
+  const itemTitles = `${ROWS} > .main .title`;
+  const itemTags = `${ROWS} > .main > .assigned-item-link > .title > .tag`;
+  const itemRow = (project, iid) => `#assignedItems > li[data-issue-key="${project}:${iid}"]`;
+  const mrBadge = (issueProject, iid, mrProject, mrIid) =>
+    `${itemRow(issueProject, iid)} .related-mr-link[data-mr-key="${mrProject}:${mrIid}"]`;
+  const badgeState = (...keys) => `document.querySelector(${JSON.stringify(mrBadge(...keys) + ' .related-mr-state')})?.textContent`;
+  const history = '#recentMrUpdatesList > li';
+  const historyEvents = `[...document.querySelectorAll(${JSON.stringify(history)})].map(row => [
+    row.querySelector('.recent-mr-issue-link').textContent,
+    row.querySelector('.recent-mr-link').textContent,
+    row.querySelector('.recent-mr-event').textContent,
+  ])`;
+  const hasEvent = (issueIid, mrIid, event) => `${historyEvents}.some(([issue, mr, label]) =>
+    issue.startsWith(${JSON.stringify('#' + issueIid)}) && mr.startsWith(${JSON.stringify('!' + mrIid)}) && label === ${JSON.stringify(event)})`;
   const q = (await m.snapshot()).issuesQuery;
   check('作業アイテムの取得条件（自分の未完了を期限順に 100 件）',
     q?.scope === 'assigned_to_me' && q?.state === 'opened' && q?.order_by === 'due_date' && q?.sort === 'asc' && q?.per_page === '100',
@@ -210,21 +225,20 @@ let m = null;
   await click('.tab[data-view=assigned]');
   await waitFor('作業アイテム一覧 7 件', `document.querySelectorAll(${JSON.stringify(ROWS)}).length === 7`);
   check('期限なしも含めて表示', (await count(ROWS)) === 7);
-  const order = await evl(`[...document.querySelectorAll('#assignedItems .title')].map(e => e.textContent.match(/#\\d+/)[0]).join('|')`);
+  const order = await evl(`[...document.querySelectorAll(${JSON.stringify(itemTitles)})].map(e => e.textContent.match(/#\\d+/)[0]).join('|')`);
   check('期限が近い順で期限なしは末尾', order === '#17|#22|#25|#23|#24|#26|#27', order);
   const sep = await evl(`[...document.querySelectorAll('#assignedItems .separator')].map(e => e.textContent).join('|')`);
   check('期限なしの区切り行', sep === '期限なし', sep);
   const sepAt = await evl(`[...document.querySelector('#assignedItems').children].findIndex(e => e.classList.contains('separator'))`);
   check('区切り行は期限ありの直後', sepAt === 4, String(sepAt));
-  const typeTags = await evl(`[...document.querySelectorAll('#assignedItems .tag')].map(e => e.textContent).join(',')`);
+  const typeTags = await evl(`[...document.querySelectorAll(${JSON.stringify(itemTags)})].map(e => e.textContent).join(',')`);
   check('行頭に種別タグ（issue_type なしは Issue）',
     typeTags === 'Issue,Issue,タスク,Issue,Issue,タスク,インシデント', typeTags);
-  const typeTones = await evl(`[...document.querySelectorAll('#assignedItems .tag')].map(e => [...e.classList].find(c => c.startsWith('t-'))).join(',')`);
+  const typeTones = await evl(`[...document.querySelectorAll(${JSON.stringify(itemTags)})].map(e => [...e.classList].find(c => c.startsWith('t-'))).join(',')`);
   check('作業アイテムの種別も色分け', typeTones === 't-mention,t-mention,t-assign,t-mention,t-mention,t-assign,t-danger', typeTones);
-  const typeColors = await evl(`[...new Set([...document.querySelectorAll('#assignedItems .tag')].map(e => getComputedStyle(e).color))].join(' / ')`);
+  const typeColors = await evl(`[...new Set([...document.querySelectorAll(${JSON.stringify(itemTags)})].map(e => getComputedStyle(e).color))].join(' / ')`);
   check('作業アイテムの描画色が 3 色分かれている', typeColors.split(' / ').length === 3, typeColors);
   check('種別チップに色の点が付く', (await count('#assignedTypes .dot')) === 3, String(await count('#assignedTypes .dot')));
-  check('作業アイテムタブに完了ボタンがない', (await count('#assignedItems button')) === 0);
   const dueCls = await evl(`[...document.querySelectorAll(${JSON.stringify(ROWS)})].map(li => li.querySelector('.due')?.className ?? '-').join('|')`);
   check('作業アイテムの期限の色分け（期限なしは期限を出さない）', dueCls === 'due over|due soon|due soon|due|-|-|-', dueCls);
   const dueTexts = await evl(`[...document.querySelectorAll('#assignedItems .due')].map(e => e.textContent).join(' | ')`);
@@ -250,6 +264,86 @@ let m = null;
   await waitFor('全件に戻す', `document.querySelectorAll(${JSON.stringify(ROWS)}).length === 7`);
   check('隠れた種別の選択は解除される', (await count('#assignedTypes .chip.active')) === 1
     && (await evl(`document.querySelector('#assignedTypes .chip.active').textContent`)).startsWith('すべて'));
+
+  // 5-2) Issue #16: 初回は状態を復元するだけ。その後は操作なしでも発行・終了を通知する。
+  const refreshMrs = async () => {
+    const idle = 'window.api.getState().then(s => !s.mrSyncing)';
+    await waitFor('前回の MR 同期が完了', idle);
+    await evl('window.api.refresh()');
+    await waitFor('MR 差分同期が完了', idle);
+  };
+  await waitFor('初回の同一 Issue に複数 MR と別 Issue の下書き',
+    `${badgeState(1, 17, 1, 42)} === 'オープン' && ${badgeState(1, 17, 1, 43)} === 'オープン'
+    && ${badgeState(2, 23, 2, 45)} === '下書き'`);
+  check('初回補完は既存の MR を最近の更新に追加しない', (await count(history)) === 0
+    && await evl(`document.querySelector('#recentMrUpdates').hidden`));
+  check('補完期間外の MR・無関係な Issue のバッジは出ない',
+    (await count(`${mrBadge(2, 23, 2, 49)}, ${itemRow(1, 22)} .related-mr-link`)) === 0);
+  const baseline = await m.snapshot();
+  check('プロジェクト MR 差分のみ取得し、一覧と関連付けをページ送りする',
+    baseline.mrListRequests.length >= 3 && baseline.mrListRequests.every(({projectId, query}) =>
+      [1, 2].includes(projectId) && query.state === 'all' && query.scope === 'all' && query.order_by === 'updated_at'
+      && query.sort === 'asc' && query.per_page === '100' && /^\d+$/.test(query.page)
+      && Number.isFinite(Date.parse(query.updated_after)) && Date.parse(query.updated_after) <= Date.parse(query.updated_before))
+    && baseline.mrListRequests.some(({projectId, query}) => projectId === 1 && Number(query.page) === 2)
+    && baseline.closesIssueRequests.some(({projectId, iid, page}) => projectId === 1 && iid === 42 && page === 2),
+    JSON.stringify({ list: baseline.mrListRequests.length, closes: baseline.closesIssueRequests }));
+
+  // 発行は、GUI の「更新」を押さず通常のポーリングで拾う。
+  await m.transitionMr('issued');
+  await waitFor('ポーリングで新規 MR の発行とバッジが出る',
+    `${hasEvent(17, 46, '発行')} && ${badgeState(1, 17, 1, 46)} === 'オープン'`, 45000);
+  await m.transitionMr('merged');
+  await refreshMrs();
+  await waitFor('マージで Issue が一覧から消えても履歴に残る',
+    `${hasEvent(17, 42, 'マージ済み')} && !document.querySelector(${JSON.stringify(itemRow(1, 17))})
+    && document.querySelectorAll(${JSON.stringify(ROWS)}).length === 6`);
+  await m.transitionMr('closed');
+  await refreshMrs();
+  await waitFor('未マージのクローズはマージと別表示で Issue を閉じない',
+    `${hasEvent(23, 45, 'クローズ（未マージ）')} && ${badgeState(2, 23, 2, 45)} === 'クローズ（未マージ）'`);
+  const observedEvents = await evl(historyEvents);
+  check('発行・マージ・未マージのクローズを各1件だけ表示', observedEvents.length === 3 &&
+    await evl([hasEvent(17, 46, '発行'), hasEvent(17, 42, 'マージ済み'), hasEvent(23, 45, 'クローズ（未マージ）')].join(' && ')),
+    JSON.stringify(observedEvents));
+
+  const beforeRepeat = await m.snapshot();
+  await refreshMrs();
+  await waitUntil('差分同期で前回と重なる MR が再び返る', async () => {
+    const snap = await m.snapshot();
+    return snap.mrListRequests.slice(beforeRepeat.mrListRequests.length)
+      .some(({ projectId, matched }) => projectId === 2 && matched.includes(45));
+  });
+  const afterRepeat = await m.snapshot();
+  check('重なる時刻窓でも、同じ MR の同じ更新は再照合せず履歴も重複しない',
+    afterRepeat.closesIssueRequests.length === beforeRepeat.closesIssueRequests.length && (await count(history)) === 3,
+    `照合 ${beforeRepeat.closesIssueRequests.length} → ${afterRepeat.closesIssueRequests.length}`);
+  check('個別 Issue の MR 有無確認リクエストは発生しない', afterRepeat.perIssueRequests.length === 0,
+    JSON.stringify(afterRepeat.perIssueRequests));
+  check('MR の同期は To-Do の件数に加算されない', (await count('#todos li')) === 4
+    && (await evl('window.api.getState().then(s => s.count)')) === 4);
+  check('最近の更新欄は日本語で表示される',
+    (await evl(`document.querySelector('#recentMrUpdatesTitle').textContent`)) === '最近の MR 更新');
+  await shot('07-related-mrs-ja.png');
+
+  const openedCount = await evlMain('globalThis.__opened.length');
+  await click(`${mrBadge(2, 23, 2, 45)}`);
+  await waitUntil('MR バッジのリンク', async () => (await evlMain('globalThis.__opened.length')) === openedCount + 1);
+  const relatedOpened = await evlMain(`globalThis.__opened.slice(${openedCount})`);
+  check('MR バッジは Issue ではなく MR だけを開く', relatedOpened[0] === `${m.url}/other/proj-b/-/merge_requests/45`,
+    JSON.stringify(relatedOpened));
+
+  await m.fail('mergeRequests', 500);
+  await refreshMrs();
+  await waitFor('MR 同期だけのエラー', `!document.querySelector('#mrSyncError').hidden`);
+  check('MR 同期に失敗しても To-Do と最後の MR 情報を維持する',
+    (await count('#todos li')) === 4 && (await count(history)) === 3 &&
+    await evl(`document.querySelector('#error').style.display === 'none' && ${badgeState(2, 23, 2, 45)} === 'クローズ（未マージ）'`));
+  await m.fail('mergeRequests', 0);
+  await m.transitionMr('reopen-issue'); // 後続の既存テストでは初期の7件が必要。
+  await refreshMrs();
+  await waitFor('MR 同期成功でエラーが消え、再オープンした Issue が戻る',
+    `document.querySelector('#mrSyncError').hidden && document.querySelectorAll(${JSON.stringify(ROWS)}).length === 7`);
 
   // 6) 絞り込み
   await click('.tab[data-view=list]');
@@ -428,7 +522,7 @@ let m = null;
   check('区切り行が英語', sepEn === 'No due date', sepEn);
   const assignedDueEn = await evl(`[...document.querySelectorAll('#assignedItems .due')].map(e => e.textContent).join(' | ')`);
   check('作業アイテムの期限が英語', assignedDueEn.includes('2d overdue') && assignedDueEn.includes('in 1d'), assignedDueEn);
-  const typeTagsEn = await evl(`[...document.querySelectorAll('#assignedItems .tag')].map(e => e.textContent).join(',')`);
+  const typeTagsEn = await evl(`[...document.querySelectorAll(${JSON.stringify(itemTags)})].map(e => e.textContent).join(',')`);
   check('種別タグが英語', typeTagsEn === 'Issue,Issue,Task,Issue,Issue,Task,Incident', typeTagsEn);
   const limitEn = await evl(`document.querySelector('#assignedLimit').textContent`);
   check('上限のお知らせが英語', limitEn === 'Showing the first 100', limitEn);

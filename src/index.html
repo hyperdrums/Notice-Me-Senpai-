@@ -39,6 +39,24 @@
   .empty { padding: 24px; text-align: center; color: var(--muted); }
   li.separator { padding: 4px 10px; color: var(--muted); font-size: 12px; font-weight: 600; background: #8881; cursor: default; }
   #assignedLimit { padding: 4px 10px; border-bottom: 1px solid var(--line); }
+  .assigned-item-link, .recent-mr-links a { color: inherit; }
+  .assigned-item-link, .related-mr-link, .recent-mr-links a { text-decoration: none; }
+  .assigned-item-link:hover .title, .related-mr-link:hover, .recent-mr-links a:hover { text-decoration: underline; }
+  .assigned-item-link { display: block; }
+  .assigned-item-link:focus-visible, .related-mr-link:focus-visible,
+  .recent-mr-links a:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
+  .related-mr-badges { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+  .related-mr-badges .tag, .recent-mr-detail .tag { margin-right: 0; white-space: nowrap; }
+  #recentMrUpdates { background: #8881; }
+  #recentMrUpdatesTitle { margin: 0; padding: 6px 10px 3px; font-size: 12px; font-weight: 600; }
+  #recentMrUpdatesList { max-height: 144px; overflow-y: auto; }
+  .recent-mr-update { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; padding-block: 5px; cursor: default; }
+  .recent-mr-links { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); gap: 6px; align-items: center; }
+  .recent-mr-links a { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .recent-mr-arrow, .recent-mr-time { color: var(--muted); }
+  .recent-mr-detail { display: flex; align-items: center; gap: 6px; white-space: nowrap; }
+  .recent-mr-time { font-size: 11px; }
+  #mrSyncError { margin: 0; padding: 5px 10px; border-bottom: 1px solid var(--line); color: var(--tone); }
   .bar { display: flex; flex-wrap: wrap; gap: 4px; padding: 6px 10px; border-bottom: 1px solid var(--line); }
   .bar:empty { display: none; }
   .chip { cursor: pointer; padding: 1px 8px; border: 1px solid var(--line); border-radius: 10px; font-size: 12px; white-space: nowrap; }
@@ -73,6 +91,11 @@
 </section>
 
 <section id="assigned" class="hidden">
+  <section id="recentMrUpdates" aria-labelledby="recentMrUpdatesTitle" hidden>
+    <h2 id="recentMrUpdatesTitle" data-i18n="recentMrUpdates"></h2>
+    <ul id="recentMrUpdatesList"></ul>
+  </section>
+  <p id="mrSyncError" class="hint t-warn" data-i18n="mrSyncError" hidden></p>
   <div class="bar repos" id="assignedRepos"></div>
   <div class="bar" id="assignedTypes"></div>
   <div class="hint hidden" id="assignedLimit"></div>
