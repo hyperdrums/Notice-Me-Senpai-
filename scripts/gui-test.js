@@ -218,14 +218,6 @@ let m = null;
   const mrBadge = (issueProject, iid, mrProject, mrIid) =>
     `${itemRow(issueProject, iid)} .related-mr-link[data-mr-key="${mrProject}:${mrIid}"]`;
   const badgeState = (...keys) => `document.querySelector(${JSON.stringify(mrBadge(...keys) + ' .related-mr-state')})?.textContent`;
-  const history = '#recentMrUpdatesList > li';
-  const historyEvents = `[...document.querySelectorAll(${JSON.stringify(history)})].map(row => [
-    row.querySelector('.recent-mr-issue-link').textContent,
-    row.querySelector('.recent-mr-link').textContent,
-    row.querySelector('.recent-mr-event').textContent,
-  ])`;
-  const hasEvent = (issueIid, mrIid, event) => `${historyEvents}.some(([issue, mr, label]) =>
-    issue.startsWith(${JSON.stringify('#' + issueIid)}) && mr.startsWith(${JSON.stringify('!' + mrIid)}) && label === ${JSON.stringify(event)})`;
   const q = (await m.snapshot()).issuesQuery;
   check('作業アイテムの取得条件（自分の未完了を期限順に 100 件）',
     q?.scope === 'assigned_to_me' && q?.state === 'opened' && q?.order_by === 'due_date' && q?.sort === 'asc' && q?.per_page === '100',
@@ -315,8 +307,6 @@ let m = null;
   await waitFor('初回の同一 Issue に複数 MR と別 Issue の下書き',
     `${badgeState(1, 17, 1, 42)} === 'オープン' && ${badgeState(1, 17, 1, 43)} === 'オープン'
     && ${badgeState(2, 23, 2, 45)} === '下書き'`);
-  check('初回補完は既存の MR を最近の更新に追加しない', (await count(history)) === 0
-    && await evl(`document.querySelector('#recentMrUpdates').hidden`));
   check('補完期間外の MR・無関係な Issue のバッジは出ない',
     (await count(`${mrBadge(2, 23, 2, 49)}, ${itemRow(1, 22)} .related-mr-link`)) === 0);
   const baseline = await m.snapshot();
@@ -331,21 +321,17 @@ let m = null;
 
   // 発行は、GUI の「更新」を押さず通常のポーリングで拾う。
   await m.transitionMr('issued');
-  await waitFor('ポーリングで新規 MR の発行とバッジが出る',
-    `${hasEvent(17, 46, '発行')} && ${badgeState(1, 17, 1, 46)} === 'オープン'`, 45000);
+  await waitFor('ポーリングで新規 MR のバッジが出る',
+    `${badgeState(1, 17, 1, 46)} === 'オープン'`, 45000);
   await m.transitionMr('merged');
   await refreshMrs();
-  await waitFor('マージで Issue が一覧から消えても履歴に残る',
-    `${hasEvent(17, 42, 'マージ済み')} && !document.querySelector(${JSON.stringify(itemRow(1, 17))})
+  await waitFor('マージで Issue が一覧から消える',
+    `!document.querySelector(${JSON.stringify(itemRow(1, 17))})
     && document.querySelectorAll(${JSON.stringify(ROWS)}).length === 6`);
   await m.transitionMr('closed');
   await refreshMrs();
   await waitFor('未マージのクローズはマージと別表示で Issue を閉じない',
-    `${hasEvent(23, 45, 'クローズ（未マージ）')} && ${badgeState(2, 23, 2, 45)} === 'クローズ（未マージ）'`);
-  const observedEvents = await evl(historyEvents);
-  check('発行・マージ・未マージのクローズを各1件だけ表示', observedEvents.length === 3 &&
-    await evl([hasEvent(17, 46, '発行'), hasEvent(17, 42, 'マージ済み'), hasEvent(23, 45, 'クローズ（未マージ）')].join(' && ')),
-    JSON.stringify(observedEvents));
+    `${badgeState(2, 23, 2, 45)} === 'クローズ（未マージ）'`);
 
   const beforeRepeat = await m.snapshot();
   await refreshMrs();
@@ -355,15 +341,13 @@ let m = null;
       .some(({ projectId, matched }) => projectId === 2 && matched.includes(45));
   });
   const afterRepeat = await m.snapshot();
-  check('重なる時刻窓でも、同じ MR の同じ更新は再照合せず履歴も重複しない',
-    afterRepeat.closesIssueRequests.length === beforeRepeat.closesIssueRequests.length && (await count(history)) === 3,
+  check('重なる時刻窓でも、同じ MR の同じ更新は再照合しない',
+    afterRepeat.closesIssueRequests.length === beforeRepeat.closesIssueRequests.length,
     `照合 ${beforeRepeat.closesIssueRequests.length} → ${afterRepeat.closesIssueRequests.length}`);
   check('個別 Issue の MR 有無確認リクエストは発生しない', afterRepeat.perIssueRequests.length === 0,
     JSON.stringify(afterRepeat.perIssueRequests));
   check('MR の同期は To-Do の件数に加算されない', (await count('#todos li')) === 4
     && (await evl('window.api.getState().then(s => s.count)')) === 4);
-  check('最近の更新欄は日本語で表示される',
-    (await evl(`document.querySelector('#recentMrUpdatesTitle').textContent`)) === '最近の MR 更新');
   await shot('07-related-mrs-ja.png');
   await shotSchemes('ui-mr-updates');
 
@@ -378,7 +362,7 @@ let m = null;
   await refreshMrs();
   await waitFor('MR 同期だけのエラー', `!document.querySelector('#mrSyncError').hidden`);
   check('MR 同期に失敗しても To-Do と最後の MR 情報を維持する',
-    (await count('#todos li')) === 4 && (await count(history)) === 3 &&
+    (await count('#todos li')) === 4 &&
     await evl(`document.querySelector('#error').style.display === 'none' && ${badgeState(2, 23, 2, 45)} === 'クローズ（未マージ）'`));
   await m.fail('mergeRequests', 0);
   await m.transitionMr('reopen-issue'); // 後続の既存テストでは初期の7件が必要。

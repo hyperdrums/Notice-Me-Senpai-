@@ -27,7 +27,7 @@ let quitting = false;
 let config = { ...DEFAULTS, token: '' };
 let knownIds = null; // 初回取得ではデスクトップ通知を出さない
 // count は To-Do だけの件数（バッジとトレイ用）。作業アイテムの件数は混ぜない
-let state = { todos: [], assigned: [], assignedLimited: false, assignedTotal: null, assignedError: null, relatedMrsByIssue: {}, recentMrUpdates: [], mrSyncError: false, count: 0, error: null, updatedAt: null, loading: false };
+let state = { todos: [], assigned: [], assignedLimited: false, assignedTotal: null, assignedError: null, relatedMrsByIssue: {}, mrSyncError: false, count: 0, error: null, updatedAt: null, loading: false };
 let connectionGeneration = 0;
 let mrCache = newMrCache();
 let mrJob = null;
@@ -120,7 +120,8 @@ async function loadMrCache() {
     const data = await fs.promises.readFile(mrCachePath());
     const { result } = await safeStorage.decryptStringAsync(data);
     const { key, cache } = JSON.parse(result);
-    if (key === mrConnectionKey() && cache?.issues && cache.projects && cache.mrs && Array.isArray(cache.history)) {
+    // 過去バージョンのキャッシュに残っている history は無視する（#22）
+    if (key === mrConnectionKey() && cache?.issues && cache.projects && cache.mrs) {
       mrCache = cache;
       rememberIssues(mrCache, [], Date.now());
       setState(mrView(mrCache));
