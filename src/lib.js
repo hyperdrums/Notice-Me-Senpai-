@@ -17,11 +17,10 @@ const UI = {
     duePrefix: '期限', msDuePrefix: 'MS期限', dueToday: '今日まで', noDueDate: '期限なし',
     dueIn: 'あと{n}日', dueOver: '{n}日超過', assignedTab: '作業アイテム {n}', assignedTabOver: '作業アイテム {n} (超過{m})',
     assignedLimit: '{n} 件まで表示',
-    relatedMrs: '関連 MR', recentMrUpdates: '最近の MR 更新',
+    relatedMrs: '関連 MR',
     mrSyncError: 'MR の更新を取得できませんでした。前回取得した情報を表示しています。',
     mrLinkLabel: 'MR !{iid} {title}：{state}',
     mrDraft: '下書き', mrOpen: 'オープン', mrMerged: 'マージ済み', mrClosed: 'クローズ（未マージ）', mrUnknown: '状態不明',
-    mrIssued: '発行', mrReopened: '再オープン',
     agoNow: 'たった今', agoMin: '{n}分前', agoHour: '{n}時間前', agoDay: '{n}日前',
     lblBaseUrl: 'GitLab URL',
     lblToken: 'Personal Access Token（スコープ: read_api。完了操作もするなら api）',
@@ -48,11 +47,10 @@ const UI = {
     duePrefix: 'Due', msDuePrefix: 'Milestone', dueToday: 'today', noDueDate: 'No due date',
     dueIn: 'in {n}d', dueOver: '{n}d overdue', assignedTab: 'Work items {n}', assignedTabOver: 'Work items {n} ({m} overdue)',
     assignedLimit: 'Showing the first {n}',
-    relatedMrs: 'Related MRs', recentMrUpdates: 'Recent MR updates',
+    relatedMrs: 'Related MRs',
     mrSyncError: 'Could not refresh MR updates. Showing the last available information.',
     mrLinkLabel: 'MR !{iid} {title}: {state}',
     mrDraft: 'Draft', mrOpen: 'Open', mrMerged: 'Merged', mrClosed: 'Closed (not merged)', mrUnknown: 'Unknown state',
-    mrIssued: 'Opened', mrReopened: 'Reopened',
     agoNow: 'just now', agoMin: '{n}m ago', agoHour: '{n}h ago', agoDay: '{n}d ago',
     lblBaseUrl: 'GitLab URL',
     lblToken: 'Personal Access Token (scope: read_api; api if you use Done)',
@@ -141,12 +139,6 @@ const MR_STATUS_LABELS = { open: 'mrOpen', draft: 'mrDraft', merged: 'mrMerged',
 const mrStatus = mr => mr.state === 'merged' ? 'merged'
   : mr.state === 'closed' ? 'closed'
     : mr.state === 'opened' ? (mr.draft ? 'draft' : 'open') : 'unknown';
-
-// 最近の MR 更新の種類 → [文言のキー, 見た目]。発行と再オープンは「オープン」と同じ見た目
-const MR_EVENTS = {
-  issued: ['mrIssued', 'open'], reopened: ['mrReopened', 'open'],
-  merged: ['mrMerged', 'merged'], closed: ['mrClosed', 'closed'],
-};
 
 // ---------- 設定 ----------
 // GitLab API の URL。baseUrl の末尾スラッシュを揃える
@@ -268,7 +260,7 @@ function ago(iso, opts = {}) {
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     LANGS, CONFIG_DEFAULTS, TYPES, UI, ACTIONS, WORK_ITEM_TYPES, ACTION_TONES, WORK_ITEM_TONES, ASSIGNED_LIMIT, ASSIGNED_TIMEOUT_MS, tr, actionLabel, actionTone, workItemTone,
-    MR_STATUS_LABELS, MR_EVENTS, mrStatus,
+    MR_STATUS_LABELS, mrStatus,
     apiUrl, mergeConfig, intervalSec, freshTodos, todoRepo, issueRepo, shortName, dueInfo, ago,
     todoRef, workItemType, workItemTypeLabel, splitByDue, countOverdue, reachedLimit, assignedPatch, assignedTabLabel,
   };

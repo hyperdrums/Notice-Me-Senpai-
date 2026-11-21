@@ -126,41 +126,6 @@ function relatedMrBadge(mr, issueKey) {
   return link;
 }
 
-function renderRecentMrUpdates(updates, syncError) {
-  const rows = [];
-  for (const { issue, mr, type, at } of updates) {
-    if (!issue || !mr || !Object.hasOwn(MR_EVENTS, type)) continue;
-    const [label, kind] = MR_EVENTS[type];
-    const row = el('li', 'recent-mr-update');
-    row.dataset.eventType = type;
-    const links = el('div', 'recent-mr-links');
-    const issueLink = el('a', 'recent-mr-issue-link', `#${issue.iid} ${issue.title}`);
-    const mrLink = el('a', 'recent-mr-link', `!${mr.iid} ${mr.title}`);
-    const eventKey = `${itemKey(issue)}:${itemKey(mr)}:${type}:${at}`;
-    for (const [link, target, suffix] of [[issueLink, issue, 'issue'], [mrLink, mr, 'mr']]) {
-      externalLink(link, target.web_url);
-      link.title = link.textContent;
-      link.dataset.assignedFocus = `recent:${eventKey}:${suffix}`;
-    }
-    const arrow = el('span', 'recent-mr-arrow', '→');
-    arrow.setAttribute('aria-hidden', 'true');
-    links.append(issueLink, arrow, mrLink);
-    const detail = el('div', 'recent-mr-detail');
-    detail.append(el('span', `recent-mr-event mr-status s-${kind}`, tr(lang, label)));
-    if (at && Number.isFinite(Date.parse(at))) {
-      const time = el('time', 'recent-mr-time', ago(at, { lang }));
-      time.dateTime = at;
-      time.title = new Date(at).toLocaleString(lang);
-      detail.append(time);
-    }
-    row.append(links, detail);
-    rows.push(row);
-  }
-  replaceAssignedRows($('#recentMrUpdatesList'), rows);
-  $('#recentMrUpdates').hidden = rows.length === 0;
-  $('#mrSyncError').hidden = !syncError;
-}
-
 function replaceAssignedRows(list, rows) {
   const active = document.activeElement;
   const focusKey = list.contains(active) ? active.dataset.assignedFocus : null;
@@ -232,7 +197,7 @@ function render(s) {
   $('#status').textContent = s.loading ? tr(lang, 'loading')
     : s.updatedAt ? `${tr(lang, 'statusCount', { n: s.count })} / ${new Date(s.updatedAt).toLocaleTimeString()}` : '';
   renderTodos(s.todos, s.error);
-  renderRecentMrUpdates(s.recentMrUpdates ?? [], s.mrSyncError);
+  $('#mrSyncError').hidden = !s.mrSyncError;
   renderAssigned(s.assigned ?? [], s.assignedLimited, s.assignedTotal, s.error || s.assignedError, s.relatedMrsByIssue ?? {});
   drawBadge(s.count);
 }

@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const {
   LANGS, CONFIG_DEFAULTS, TYPES, UI, ACTIONS, WORK_ITEM_TYPES, ACTION_TONES, WORK_ITEM_TONES, ASSIGNED_LIMIT, tr, actionLabel, actionTone, workItemTone,
-  MR_STATUS_LABELS, MR_EVENTS, mrStatus,
+  MR_STATUS_LABELS, mrStatus,
   apiUrl, mergeConfig, intervalSec, freshTodos, todoRepo, issueRepo, shortName, dueInfo, ago,
   todoRef, workItemType, workItemTypeLabel, splitByDue, countOverdue, reachedLimit, assignedPatch, assignedTabLabel,
 } = require('../src/lib.js');
@@ -369,15 +369,13 @@ test('mrStatus: 状態と下書きを見た目の種類に寄せる', () => {
   assert.equal(mrStatus({ state: 'locked' }), 'unknown');
 });
 
-test('MR の状態と更新の種類は、文言と CSS（明暗 2 つ＋記号）を必ず持つ', () => {
+test('MR の状態は、文言と CSS（明暗 2 つ＋記号）を必ず持つ', () => {
   const css = fs.readFileSync(path.join(__dirname, '..', 'src', 'index.html'), 'utf8');
-  const kinds = new Set([...Object.keys(MR_STATUS_LABELS), ...Object.values(MR_EVENTS).map(([, k]) => k)]);
-  for (const kind of kinds) {
-    assert.ok(MR_STATUS_LABELS[kind], `${kind} の文言がない`);
+  for (const kind of Object.keys(MR_STATUS_LABELS)) {
     assert.equal([...css.matchAll(new RegExp(`\\.s-${kind}\\s*\\{`, 'g'))].length, 2, `.s-${kind} は明暗 2 つ必要`);
     assert.match(css, new RegExp(`\\.s-${kind}::before\\s*\\{\\s*content:`), `.s-${kind} に記号がない`);
   }
-  for (const [label] of Object.values(MR_EVENTS)) assert.ok(UI.ja[label] && UI.en[label], `${label} の訳がない`);
+  for (const label of Object.values(MR_STATUS_LABELS)) assert.ok(UI.ja[label] && UI.en[label], `${label} の訳がない`);
 });
 
 test('配色: 絞り込みの選択中に警告色（赤）を使わない', () => {

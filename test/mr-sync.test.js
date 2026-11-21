@@ -30,7 +30,6 @@ test('MR delta: backfill is silent, overlapping pages do not recheck unchanged M
   assert.deepEqual(rememberIssues(cache, [issue], t0), [1]);
   await syncMrProject(cache, 1, t0, stub.get);
   assert.deepEqual(mrView(cache).relatedMrsByIssue['1:17'].map(mr => mr.iid), [2, 1]);
-  assert.deepEqual(mrView(cache).recentMrUpdates, []);
   assert.deepEqual(stub.requests.filter(r => !r.pathname.endsWith('closes_issues')).map(r => r.params.page), ['1', '2']);
   assert.equal(stub.requests[0].params.state, 'all');
   assert.equal(stub.requests[0].params.updated_before, iso(t0));
@@ -40,7 +39,7 @@ test('MR delta: backfill is silent, overlapping pages do not recheck unchanged M
   assert.equal(cache.projects[1], t0 + 1000);
 });
 
-test('MR delta: issued, closed without merge, reopened, and merged after Issue disappears', async () => {
+test('MR delta: state changes update the related MR without an event history', async () => {
   const cache = newMrCache();
   const stub = gitLab();
   rememberIssues(cache, [issue], t0);
@@ -51,8 +50,8 @@ test('MR delta: issued, closed without merge, reopened, and merged after Issue d
     assert.deepEqual(rememberIssues(cache, state === 'merged' ? [] : [issue], now), [1]);
     await syncMrProject(cache, 1, now, stub.get);
   }
-  assert.deepEqual(mrView(cache).recentMrUpdates.map(e => e.type), ['merged', 'reopened', 'closed', 'issued']);
-  assert.ok(mrView(cache).recentMrUpdates.every(e => e.issue.project_id === 1 && e.issue.iid === 17));
+  assert.ok(!('recentMrUpdates' in mrView(cache)));
+  assert.ok(!('history' in cache));
   assert.equal(mrView(cache).relatedMrsByIssue['1:17'][0].state, 'merged');
 });
 
@@ -68,7 +67,7 @@ test('MR delta: failed relation leaves cursor intact and completed work deduplic
   stub.failLookup = null;
   await syncMrProject(cache, 1, t0 + 4000, stub.get);
   assert.equal(stub.requests.filter(r => r.pathname.endsWith('/1/closes_issues')).length, 1);
-  assert.deepEqual(mrView(cache).recentMrUpdates.map(e => e.mr.iid), [2, 1]);
+  assert.deepEqual(mrView(cache).relatedMrsByIssue['1:17'].map(mr => mr.iid), [2, 1]);
 });
 
 test('MR delta: no polling after remembered Issues expire', () => {
