@@ -120,9 +120,9 @@ async function loadMrCache() {
     const data = await fs.promises.readFile(mrCachePath());
     const { result } = await safeStorage.decryptStringAsync(data);
     const { key, cache } = JSON.parse(result);
-    // 過去バージョンのキャッシュに残っている history は無視する（#22）
+    // 過去バージョンのキャッシュに残っている history は読み込まない（#22）。次の保存で落ちる
     if (key === mrConnectionKey() && cache?.issues && cache.projects && cache.mrs) {
-      mrCache = cache;
+      mrCache = { projects: cache.projects, issues: cache.issues, mrs: cache.mrs };
       rememberIssues(mrCache, [], Date.now());
       setState(mrView(mrCache));
     }

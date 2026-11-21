@@ -71,9 +71,9 @@
   .empty { padding: 24px; text-align: center; color: var(--muted); }
   li.separator { padding: 4px 10px; color: var(--muted); font-size: 12px; font-weight: 600; background: var(--band); cursor: default; }
   #assignedLimit { padding: 4px 10px; border-bottom: 1px solid var(--line); }
-  .assigned-item-link, .related-mr-link { color: inherit; text-decoration: none; }
+  .assigned-item-link, .related-mr-link { text-decoration: none; }
+  .assigned-item-link { color: inherit; display: block; }
   .assigned-item-link:hover .title, .related-mr-link:hover { text-decoration: underline; }
-  .assigned-item-link { display: block; }
   .assigned-item-link:focus-visible, .related-mr-link:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
   .related-mr-badges { display: flex; flex-wrap: wrap; gap: 2px 12px; margin-top: 3px; }
   /* 行の末尾の枠（期限）。本文が省略されても、期限は右端で必ず読める */
