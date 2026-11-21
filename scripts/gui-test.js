@@ -450,10 +450,12 @@ let m = null;
   const todoErr = await evl(errorText);
   check('To-Do の失敗は取得失敗と表示', todoErr === '取得失敗: HTTP 500', todoErr);
   check('To-Do の失敗で一覧とバッジは維持', (await count('#todos li')) === 5 && (await evl(`window.__badge`)) === '5');
+  const todoHitsBeforeRecovery = (await m.snapshot()).conditionalHitsByList.todos;
   await m.fail('todos', 0);
   await click('#refresh');
   await waitFor('To-Do の失敗が消える', errorHidden);
-  check('次の成功で To-Do のエラーが消える', (await evl(errorText)) === '');
+  check('304 でも To-Do のエラーが消える', (await evl(errorText)) === ''
+    && (await m.snapshot()).conditionalHitsByList.todos > todoHitsBeforeRecovery);
 
   // 作業アイテムの失敗に続いて To-Do も失敗したら、「To-Do は更新しました」を残さない
   await m.fail('issues', 500);
@@ -482,6 +484,9 @@ let m = null;
   check('取得するのは 100 件まで', (await count(ROWS)) === 100);
   const totalLabel = await evl(tabText);
   check('タブの件数は x-total の総数', totalLabel === '作業アイテム 150 (超過1)', totalLabel);
+  await m.setAssignedTotal('151');
+  await click('#refresh');
+  await waitFor('一覧が同じでも総数だけ更新する', `${tabText} === '作業アイテム 151 (超過1)'`);
   // x-total が無くても、100 件返ってきたら上限とみなす
   await m.setAssignedTotal('none');
   await click('#refresh');
@@ -511,6 +516,29 @@ let m = null;
   await click('#refresh');
   await waitFor('作業アイテムの時間切れが消える', errorHidden);
   check('次の成功で時間切れのエラーが消える', (await evl(errorText)) === '');
+
+  // 9-6) Issue #20: ETag による条件付きリクエスト
+  const before304 = await m.snapshot();
+  const notificationsBefore304 = (await shownBodies()).length;
+  await evl('window.api.refresh()');
+  const after304 = await m.snapshot();
+  check('To-Do と作業アイテムの両方で 304 が戻る', after304.conditionalHits > before304.conditionalHits
+    && after304.conditionalHitsByList.todos > before304.conditionalHitsByList.todos
+    && after304.conditionalHitsByList.issues > before304.conditionalHitsByList.issues);
+  check('304 でも一覧を保ち、重複通知しない', (await count('#todos li')) === 6 && (await count(ROWS)) === 7
+    && (await shownBodies()).length === notificationsBefore304);
+  await m.push();
+  await waitFor('304 のあとも新着を拾える', `document.querySelectorAll('#todos li').length === 7`);
+  check('304 のあとも新着を通知する', (await shownBodies()).includes('モックから押した新着 4'));
+  // ETag を無効にしたサーバでも、200 の本文から一覧を更新できる。
+  await m.etagOff();
+  await m.setAssignedCount(8);
+  await evl('window.api.refresh()');
+  await waitFor('ETag なしのフル取得で一覧を更新する', `document.querySelectorAll(${JSON.stringify(ROWS)}).length === 8`);
+  check('ETag なしでも To-Do と作業アイテムを表示できる', (await count('#todos li')) === 7 && (await count(ROWS)) === 8);
+  await m.setAssignedCount(null);
+  await evl('window.api.refresh()');
+  await waitFor('作業アイテムを 7 件に戻す', `document.querySelectorAll(${JSON.stringify(ROWS)}).length === 7`);
 
   // 10) preload の公開面
   const api = await evl(`Object.keys(window.api).sort().join(',')`);

@@ -144,11 +144,14 @@ const initialState = () => ({
   fail: { todos: 0, issues: 0, mergeRequests: 0, closesIssues: 0 },
   assignedTotal: null, hangIssues: false, issuesQuery: null,
   mrListRequests: [], closesIssueRequests: [], perIssueRequests: [],
+  // ETag 検証（#20）: URL ごとの ETag と、If-None-Match が当たって 304 を返した回数
+  etags: new Map(), etagOff: false, conditionalHits: 0, conditionalHitsByList: { todos: 0, issues: 0 },
 });
 
 async function start({ port = 0, quiet = false } = {}) {
   const log = (...a) => { if (!quiet) console.log(...a); };
   const state = { todos: null, ...initialState() };
+  let etagSeq = 1;
   const held = []; // __hang-issues で止めている /issues の応答
 
   const server = http.createServer((req, res) => {
@@ -186,6 +189,10 @@ async function start({ port = 0, quiet = false } = {}) {
       if (!state.hangIssues) held.splice(0).forEach(respond => respond());
       return send(200, { hangIssues: state.hangIssues });
     }
+    if (p === '/__etag-off') {
+      state.etagOff = true;
+      return send(200, { etagOff: true });
+    }
     if (p === '/__mr-transition') {
       const event = url.searchParams.get('event');
       return advanceMrFixture(state, event) ? send(200, { event }) : send(409, { message: `mock: cannot apply ${event}` });
@@ -206,11 +213,29 @@ async function start({ port = 0, quiet = false } = {}) {
     // ---- GitLab API のふり ----
     if (req.headers['private-token'] !== TOKEN) return send(401, { message: '401 Unauthorized' });
 
+    // 304 では x-total を再送しない。総数だけが変わって一覧の ETag が同じ場合も再現する。
+    const sendList = (list, rows, headers) => {
+      if (state.etagOff) return send(200, rows, headers);
+      const body = JSON.stringify(rows);
+      let entry = state.etags.get(req.url);
+      if (entry?.body !== body) {
+        entry = { body, etag: `W/"${etagSeq++}"` };
+        state.etags.set(req.url, entry);
+      }
+      if (req.headers['if-none-match'] === entry.etag) {
+        state.conditionalHits++;
+        state.conditionalHitsByList[list]++;
+        res.writeHead(304, { etag: entry.etag });
+        return res.end();
+      }
+      return send(200, rows, { etag: entry.etag, ...headers });
+    };
+
     if (p === '/api/v4/todos' && state.fail.todos) return send(state.fail.todos, { message: 'mock failure' });
     if (p === '/api/v4/issues' && state.fail.issues) return send(state.fail.issues, { message: 'mock failure' });
 
     if (p === '/api/v4/todos') {
-      return send(200, state.todos, { 'x-total': String(state.todos.length) });
+      return sendList('todos', state.todos, { 'x-total': String(state.todos.length) });
     }
     if (p === '/api/v4/issues') {
       state.issuesQuery = Object.fromEntries(url.searchParams);
@@ -220,7 +245,7 @@ async function start({ port = 0, quiet = false } = {}) {
         const matches = state.issues.filter(i => !requestedState || requestedState === 'all' || requestedState === i.state);
         const total = state.assignedTotal ?? String(matches.length);
         const rows = matches.slice(0, Number(url.searchParams.get('per_page')) || 20);
-        send(200, rows, total === 'none' ? {} : { 'x-total': total });
+        sendList('issues', rows, total === 'none' ? {} : { 'x-total': total });
       };
       if (state.hangIssues) { held.push(respond); return; }
       return respond();
@@ -285,6 +310,7 @@ async function start({ port = 0, quiet = false } = {}) {
     setAssignedTotal: n => fetch(`${url}/__assigned-total${n == null ? '' : `?n=${n}`}`).then(r => r.json()),
     setAssignedCount: n => fetch(`${url}/__assigned-count${n == null ? '' : `?n=${n}`}`).then(r => r.json()),
     hangIssues: on => fetch(`${url}/__hang-issues?on=${on ? 1 : 0}`).then(r => r.json()),
+    etagOff: () => fetch(`${url}/__etag-off`).then(r => r.json()),
     transitionMr: async event => {
       const r = await fetch(`${url}/__mr-transition?event=${event}`);
       if (!r.ok) throw new Error(`MR fixture ${event}: HTTP ${r.status}`);
