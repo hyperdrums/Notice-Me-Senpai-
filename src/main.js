@@ -6,6 +6,7 @@ const path = require('path');
 const fs = require('fs');
 const { createHash } = require('crypto');
 const { newMrCache, rememberIssues, mrView, syncMrProject } = require('./mr-sync.js');
+const { newEtagStore, fetchWithEtag, invalidate, clearEtags } = require('./etag.js');
 const { CONFIG_DEFAULTS, ASSIGNED_LIMIT, ASSIGNED_TIMEOUT_MS, apiUrl, mergeConfig, intervalSec, freshTodos, assignedPatch, tr } = require('./lib.js');
 
 // 軽量化: GPU・ネットワークを別プロセスにせず、メインに統合する（素のHTMLなのでGPU不要）
@@ -36,6 +37,7 @@ let mrRetryAt = 0;
 const mrCachePath = () => path.join(app.getPath('userData'), 'mr-cache.enc');
 const mrConnectionKey = () => createHash('sha256').update(JSON.stringify([config.baseUrl, config.token])).digest('hex');
 let pollSeq = 0;      // poll の通し番号
+let todosSeq = 0;     // To-Do の結果を反映した最新の poll の番号
 let assignedSeq = 0;  // 作業アイテムの結果を反映した最新の poll の番号
 
 // 初回起動（設定が無いとき）だけ OS の言語を見る。ja 以外なら英語で出す
@@ -81,12 +83,14 @@ function applyAutoStart() {
 }
 
 // ---------- GitLab API ----------
-async function api(p, method = 'GET', signal) {
+async function api(p, method = 'GET', signal, extraHeaders) {
   const res = await net.fetch(apiUrl(config.baseUrl, p), {
     method,
-    headers: { 'PRIVATE-TOKEN': config.token },
+    headers: { 'PRIVATE-TOKEN': config.token, ...extraHeaders },
     signal,
+    ...(extraHeaders && { cache: 'no-store' }),
   });
+  if (res.status === 304 && extraHeaders?.['If-None-Match']) return res;
   if (!res.ok) {
     const msg = res.status === 401 ? tr(config.lang, 'errInvalidToken') : `HTTP ${res.status}`;
     throw new Error(msg);
@@ -94,10 +98,29 @@ async function api(p, method = 'GET', signal) {
   return res;
 }
 
+const etagStore = newEtagStore();
+const TODO_LIMIT = 100;
+const TODOS_PATH = `/todos?state=pending&per_page=${TODO_LIMIT}`;
+const ASSIGNED_PATH = `/issues?scope=assigned_to_me&state=opened&order_by=due_date&sort=asc&per_page=${ASSIGNED_LIMIT}`;
+
+async function apiJsonCached(p, limit, signal) {
+  return fetchWithEtag(etagStore, apiUrl(config.baseUrl, p), async ({ etag }) => {
+    // Electron の HTTP キャッシュを介さず、ここで 304 を処理する。
+    const res = await api(p, 'GET', signal, etag ? { 'If-None-Match': etag } : {});
+    // 304 に x-total が付いていれば採用する（GitLab は通常再送しないが、付く実装でも件数を古くしない）
+    if (res.status === 304) return { status: 304, xTotal: res.headers.get('x-total') };
+    const body = await res.json();
+    if (!Array.isArray(body)) throw new Error(tr(config.lang, 'errBadResponse'));
+    const xTotal = res.headers.get('x-total');
+    // 304 では x-total が来ない。表示外に件数があり得るときは毎回総数を取り直す。
+    const complete = body.length < limit && (xTotal == null || Number(xTotal) === body.length);
+    return { status: res.status, etag: complete ? res.headers.get('etag') : null, body, xTotal };
+  });
+}
+
 async function fetchTodos() {
-  const res = await api('/todos?state=pending&per_page=100');
-  const todos = await res.json();
-  return { todos, count: Number(res.headers.get('x-total')) || todos.length };
+  const { body: todos, changed, xTotal } = await apiJsonCached(TODOS_PATH, TODO_LIMIT);
+  return { todos, changed, count: Number(xTotal) || todos.length };
 }
 
 // 作業アイテムタブ用: 自分にアサインされた未完了の作業アイテム。issue_type を指定しなければタスクなども返る
@@ -105,10 +128,8 @@ async function fetchAssigned() {
   // 応答が来ないときも部分的な失敗として扱えるよう、待つ時間を区切る
   const signal = AbortSignal.timeout(ASSIGNED_TIMEOUT_MS);
   try {
-    const res = await api(`/issues?scope=assigned_to_me&state=opened&order_by=due_date&sort=asc&per_page=${ASSIGNED_LIMIT}`, 'GET', signal);
-    const items = await res.json();
-    if (!Array.isArray(items)) throw new Error(tr(config.lang, 'errBadResponse'));
-    return { items, xTotal: res.headers.get('x-total') };
+    const { body: items, changed, xTotal } = await apiJsonCached(ASSIGNED_PATH, ASSIGNED_LIMIT, signal);
+    return { items, changed, xTotal };
   } catch (e) {
     throw signal.aborted ? new Error(tr(config.lang, 'errTimeout')) : e;
   }
@@ -198,13 +219,19 @@ async function poll() {
   // 作業アイテムが遅くても失敗しても、To-Do の表示・バッジ・通知は待たせない
   const assignedFetch = Promise.allSettled([fetchAssigned()]);
   try {
-    const { todos, count } = await fetchTodos();
-    if (generation !== connectionGeneration) return;
-    notifyNew(todos);
-    setState({ todos, count, error: null, updatedAt: Date.now(), loading: false });
+    const { todos, changed, count } = await fetchTodos();
+    if (generation !== connectionGeneration || seq < todosSeq) return;
+    todosSeq = seq;
+    if (changed || state.todos !== todos) {
+      notifyNew(todos);
+      setState({ todos, count, error: null, updatedAt: Date.now(), loading: false });
+    } else {
+      if (knownIds === null) knownIds = new Set(todos.map(t => t.id));
+      setState(state.error ? { error: null, updatedAt: Date.now(), loading: false } : { loading: false });
+    }
   } catch (e) {
-    if (generation !== connectionGeneration) return;
-    assignedSeq = Math.max(assignedSeq, seq);
+    if (generation !== connectionGeneration || seq < todosSeq) return;
+    todosSeq = seq;
     setState({ error: tr(config.lang, 'errFetch', { msg: e.message }), assignedError: null, loading: false });
     return;
   }
@@ -212,6 +239,10 @@ async function poll() {
   // 新しい poll の結果を、遅れて届いた古い応答で上書きしない
   if (seq < assignedSeq) return;
   assignedSeq = seq;
+  // To-Do の取得に失敗した間のキャッシュも、画面には一度反映する。
+  if (assignedResult.status === 'fulfilled' && assignedResult.value.items !== state.assigned) {
+    assignedResult.value.changed = true;
+  }
   setState(assignedPatch(assignedResult, config.lang));
   if (assignedResult.status === 'fulfilled') syncMrs(generation);
 }
@@ -332,6 +363,8 @@ ipcMain.handle('save-config', async (_e, c) => {
     mrOffset = 0;
     mrRetryAt = 0;
     mrCache = newMrCache();
+    // baseUrl / token が変われば ETag も別接続のもの。持ち越さない
+    clearEtags(etagStore);
     setState({ todos: [], count: 0, assigned: [], assignedLimited: false, assignedTotal: null, assignedError: null, ...mrView(mrCache), mrSyncError: false });
   }
   await saveConfig();
@@ -345,9 +378,15 @@ ipcMain.handle('save-config', async (_e, c) => {
 ipcMain.handle('refresh', () => poll());
 ipcMain.handle('open', (_e, url) => openUrl(url));
 ipcMain.handle('done', async (_e, id) => {
+  const generation = connectionGeneration;
   try {
     await api(`/todos/${Number(id)}/mark_as_done`, 'POST');
+    if (generation !== connectionGeneration) return;
+    // サーバ側で確実に変わった。次回 poll が偽 304 で古い一覧を返さないよう捨てる
+    invalidate(etagStore, apiUrl(config.baseUrl, TODOS_PATH));
+    invalidate(etagStore, apiUrl(config.baseUrl, ASSIGNED_PATH));
   } catch (e) {
+    if (generation !== connectionGeneration) return;
     setState({ error: tr(config.lang, 'errDone', { msg: e.message }) });
   }
   await poll();

@@ -205,12 +205,14 @@ function reachedLimit(xTotal, n, limit = ASSIGNED_LIMIT) {
 }
 
 // 作業アイテムの取得結果（Promise.allSettled の 1 要素）→ state への差分。
-// 失敗時は前回の一覧を残すため、assigned には触らない
+// 失敗時は前回の一覧を残すため、assigned には触らない。
+// 一覧が変わらない成功時はエラーだけ消す。
 function assignedPatch(result, lang = 'ja') {
   if (result.status === 'rejected') {
     return { assignedError: tr(lang, 'errAssigned', { msg: result.reason?.message ?? String(result.reason) }) };
   }
-  const { items, xTotal } = result.value;
+  const { items, xTotal, changed = true } = result.value;
+  if (!changed) return { assignedError: null };
   return { assigned: items, assignedLimited: reachedLimit(xTotal, items.length), assignedTotal: parseTotal(xTotal) ?? items.length, assignedError: null };
 }
 
