@@ -113,7 +113,7 @@ GitLab の仕様です。To-Do は「見たかどうか」ではなく「対応�
 | `GET /projects/:id/merge_requests` | 監視中のプロジェクトで更新された MR をまとめて取得 |
 | `GET /projects/:id/merge_requests/:merge_request_iid/closes_issues` | 新規・更新 MR と Issue を照合（同じ更新は再照合しない） |
 
-- To-Do と作業アイテムの一覧は ETag（`If-None-Match`）で条件付き取得します。変化がなければ GitLab は 304 を返し、データベースを触りません。件数が表示より多い可能性がある一覧は、件数を古くしないよう毎回取得します
+- To-Do と作業アイテムの一覧は ETag（`If-None-Match`）で条件付き取得します。変化がなければ転送を省いて 304 が返ります。件数が表示より多い可能性がある一覧は、件数を古くしないよう毎回取得します
 
 - **テレメトリ（利用状況の送信）はありません**
 - **自動更新はありません**。更新は Releases を自分で確認します

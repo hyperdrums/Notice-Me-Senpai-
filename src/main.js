@@ -107,7 +107,8 @@ async function apiJsonCached(p, limit, signal) {
   return fetchWithEtag(etagStore, apiUrl(config.baseUrl, p), async ({ etag }) => {
     // Electron の HTTP キャッシュを介さず、ここで 304 を処理する。
     const res = await api(p, 'GET', signal, etag ? { 'If-None-Match': etag } : {});
-    if (res.status === 304) return { status: 304 };
+    // 304 に x-total が付いていれば採用する（GitLab は通常再送しないが、付く実装でも件数を古くしない）
+    if (res.status === 304) return { status: 304, xTotal: res.headers.get('x-total') };
     const body = await res.json();
     if (!Array.isArray(body)) throw new Error(tr(config.lang, 'errBadResponse'));
     const xTotal = res.headers.get('x-total');
@@ -231,7 +232,6 @@ async function poll() {
   } catch (e) {
     if (generation !== connectionGeneration || seq < todosSeq) return;
     todosSeq = seq;
-    assignedSeq = Math.max(assignedSeq, seq);
     setState({ error: tr(config.lang, 'errFetch', { msg: e.message }), assignedError: null, loading: false });
     return;
   }

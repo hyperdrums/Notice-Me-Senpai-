@@ -19,7 +19,10 @@ async function fetchWithEtag(store, key, get) {
     const res = await get({ etag: entry?.etag });
     if (res.status === 304) {
       if (!entry) throw new Error('ETag 304 without a cached entry');
-      return { status: 304, changed: false, body: entry.body, xTotal: entry.xTotal };
+      // 304 に x-total が付いていれば新しい方を使う（GitLab は通常再送しないが、付く実装でも件数を古くしない）
+      const xTotal = res.xTotal ?? entry.xTotal;
+      const changed = xTotal !== entry.xTotal;
+      return { status: 304, changed, body: entry.body, xTotal };
     }
     if (res.status < 200 || res.status >= 300) return { status: res.status, changed: false };
 
