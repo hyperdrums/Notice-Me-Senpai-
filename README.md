@@ -11,11 +11,11 @@ NMS は、GitLab の To-Do を Windows のタスクバーに件数バッジで�
 > The Work items tab lists the work items assigned to you (issues, incidents, test cases and tasks), nearest due date first, with undated items last.
 
 <p>
-  <img src="docs/screenshot-list.png" width="380" alt="To-Do タブ（日本語）: To-Do の一覧。期限は行の右端にあり、期限超過は赤、間近は橙で強調されている">
-  <img src="docs/screenshot-assigned.png" width="380" alt="作業アイテムタブ（英語 UI）: アサインされた作業アイテムと対応 MR の状態を表示。期限は行の右端にそろっている">
+  <img src="docs/screenshot-list.png" width="380" alt="Activity タブ（日本語）: レビュー依頼・メンションなどの To-Do 一覧。期限は行の右端、超過はコーラル、間近は黄で強調されている">
+  <img src="docs/screenshot-assigned.png" width="380" alt="Items タブ（英語 UI）: アサインされた作業アイテムと対応 MR の状態を表示。期限は行の右端にそろっている">
 </p>
 
-<p align="center">右は UI を英語に切り替えた状態です。設定から日本語 / 英語を選べます（初回は OS の言語で自動決定）。色は期限超過・CI 失敗など対応が必要なものだけに使っています。</p>
+<p align="center">右は UI を英語に切り替えた状態です。設定から日本語 / 英語を選べます（初回は OS の言語で自動決定）。色は期限超過など対応が必要なものだけに使っています。</p>
 
 ## 目次 (Table of Contents)
 

@@ -306,6 +306,7 @@ function createWindow() {
     width: 520,
     height: 640,
     icon: circleIcon(64, [226, 67, 41]),
+    frame: false,
     autoHideMenuBar: true,
     show: false,
     webPreferences: {
@@ -347,7 +348,11 @@ function createTray() {
 }
 
 // ---------- IPC ----------
+ipcMain.on('win-minimize', ({ sender }) => BrowserWindow.fromWebContents(sender)?.minimize());
+// × は最小化（タスクバーのバッジを残すため）。close() 経由の暗黙の preventDefault に依存しない
+ipcMain.on('win-close', ({ sender }) => BrowserWindow.fromWebContents(sender)?.minimize());
 ipcMain.handle('get-state', () => state);
+ipcMain.handle('get-version', () => app.getVersion());
 ipcMain.handle('get-config', () => {
   const { token, ...rest } = config;
   return { ...rest, hasToken: !!token };
