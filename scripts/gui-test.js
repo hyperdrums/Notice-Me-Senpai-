@@ -289,13 +289,13 @@ let m = null;
     return {
       label: tab.textContent, ariaLabel: tab.getAttribute('aria-label'), title: tab.title,
       count: badges.length, hidden: badge?.getAttribute('aria-hidden'),
-      symbol: badge ? getComputedStyle(badge, '::before').content : null,
+      color: badge ? getComputedStyle(badge).backgroundColor : null,
     };
   })()`;
   const checkAssignedWarning = async (description, warning) => {
     const tab = await evl(assignedTabState);
     const valid = warning
-      ? tab.count === 1 && tab.hidden === 'true' && tab.symbol === '"!"'
+      ? tab.count === 1 && tab.hidden === 'true' && tab.color === 'rgb(255, 36, 66)'
         && tab.ariaLabel === `Items (${warning})` && tab.title === warning
       : tab.count === 0 && tab.ariaLabel === null && tab.title === '';
     check(description, tab.label === 'Items' && valid, JSON.stringify(tab));
@@ -304,14 +304,11 @@ let m = null;
     const badge = chip.querySelector('.warning-count');
     const { width, height } = badge.getBoundingClientRect();
     const tabBadge = document.querySelector('#assignedTab .warning-count');
-    const samePaint = ['::before', '::after'].every(pseudo => {
-      const properties = ['backgroundColor', 'clipPath', 'content'];
-      if (pseudo === '::before') properties.push('color');
-      return properties.every(property => getComputedStyle(badge, pseudo)[property] === getComputedStyle(tabBadge, pseudo)[property]);
-    });
+    const bs = getComputedStyle(badge), ts = getComputedStyle(tabBadge);
+    const samePaint = bs.backgroundColor === ts.backgroundColor && bs.clipPath === ts.clipPath;
     return { value: chip.dataset.value, name: chip.getAttribute('aria-label'), title: chip.title,
       valid: chip.tagName === 'BUTTON' && chip.querySelectorAll('.warning-count').length === 1
-        && badge.getAttribute('aria-hidden') === 'true' && width === 16 && height === 16 && samePaint };
+        && badge.getAttribute('aria-hidden') === 'true' && width === 12 && height === 12 && samePaint };
   })`);
   const titlebarState = `(() => {
     const drag = document.querySelector('.window-drag');
@@ -346,7 +343,7 @@ let m = null;
   await checkDarkTheme('作業アイテム');
   const projectWarnings = await chipWarnings('#assignedRepos');
   const typeWarnings = await chipWarnings('#assignedTypes');
-  check('期限超過があるプロジェクトと All にだけ同じ 16px の警告を付ける',
+  check('期限超過があるプロジェクトと All にだけ同じ赤ひし形の警告を付ける',
     projectWarnings.map(chip => chip.value).join('|') === 'all|group/proj-a'
       && projectWarnings.every(chip => chip.valid && chip.name.endsWith('(期限超過 1 件)'))
       && projectWarnings[0].title === '期限超過 1 件' && projectWarnings[1].title === 'group/proj-a · 期限超過 1 件',
@@ -763,8 +760,8 @@ let m = null;
       const clippedIcon = element.id === 'refresh' && (!icon || icon.width === 0 ||
         icon.left < rect.left || icon.right > rect.right || icon.top < rect.top || icon.bottom > rect.bottom);
       const badge = element.querySelector('.warning-count')?.getBoundingClientRect();
-      const clippedBadge = badge && (badge.width < 14 || badge.width > 18 ||
-        badge.left - 2 < rect.left || badge.right + 2 > rect.right || badge.top - 1 < rect.top || badge.bottom + 2 > rect.bottom);
+      // 警告バッジはタブ/チップの左上角に意図的にはみ出して配置するため、サイズだけを検証する
+      const clippedBadge = badge && (badge.width < 10 || badge.width > 14);
       return outside || clippedTab || clippedIcon || clippedBadge ? [element.id || element.textContent] : [];
     });
   })()`;

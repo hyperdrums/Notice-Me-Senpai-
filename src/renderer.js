@@ -264,7 +264,7 @@ function drawBadge(count) {
   const o = document.createElement('canvas');
   o.width = o.height = 16;
   let g = o.getContext('2d');
-  g.fillStyle = '#555';
+  g.fillStyle = '#e24329';
   g.beginPath(); g.arc(8, 8, 8, 0, Math.PI * 2); g.fill();
   g.fillStyle = '#fff';
   g.font = `bold ${label.length > 2 ? 7 : label.length > 1 ? 9 : 11}px Segoe UI`;
@@ -274,7 +274,7 @@ function drawBadge(count) {
   const t = document.createElement('canvas');
   t.width = t.height = 32;
   g = t.getContext('2d');
-  g.fillStyle = count > 0 ? '#555' : '#888';
+  g.fillStyle = count > 0 ? '#e24329' : '#888';
   g.beginPath(); g.arc(16, 16, 15, 0, Math.PI * 2); g.fill();
   if (count > 0) {
     g.fillStyle = '#fff';
