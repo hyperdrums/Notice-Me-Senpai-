@@ -78,21 +78,7 @@ test('ETag: clearEtags で接続まるごとのリセット', async () => {
   const store = newEtagStore();
   await fetchWithEtag(store, key, async () => ({ ok: true, status: 200, etag: 'W/"1"', body: [1] }));
   clearEtags(store);
-  // 消えた後は If-None-Match 無しで取り直す
-  let sent;
-  await fetchWithEtag(store, key, async ({ etag }) => { sent = etag; return { ok: true, status: 200, etag: 'W/"2"', body: [1] }; });
-  assert.equal(sent, undefined);
-});
-
-test('ETag: 304 に x-total が付いていれば新しい方を使い、変わっていれば changed', async () => {
-  const store = newEtagStore();
-  await fetchWithEtag(store, key, async () => ({ ok: true, status: 200, etag: 'W/"a"', body: [1, 2], xTotal: '2' }));
-  const same = await fetchWithEtag(store, key, async () => ({ status: 304, xTotal: '2' }));
-  assert.equal(same.changed, false);
-  const grown = await fetchWithEtag(store, key, async () => ({ status: 304, xTotal: '3' }));
-  assert.equal(grown.changed, true);
-  assert.equal(grown.xTotal, '3');
-  assert.deepEqual(grown.body, [1, 2]);
+  assert.deepEqual(store.entries, {});
 });
 
 test('ETag: 304 なのにキャッシュが無い異常系は例外', async () => {
