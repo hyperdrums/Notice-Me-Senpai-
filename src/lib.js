@@ -10,12 +10,14 @@ const CONFIG_DEFAULTS = { baseUrl: '', intervalSec: 60, notify: true, insecure: 
 const UI = {
   ja: {
     appTitle: 'Notice Me, Senpai!',
-    tabList: 'To-Do', tabAssigned: '作業アイテム', tabSettings: '設定', refresh: '更新',
+    tabList: 'Activity', tabAssigned: 'Items', tabSettings: 'Settings', refresh: '更新',
+    winMinimize: '最小化', winClose: '閉じる',
     loading: '取得中…', statusCount: '{n} 件',
     emptyTodos: 'To-Do はありません', emptyAssigned: 'アサインされた作業アイテムはありません',
-    done: '完了', all: 'すべて', noneRepo: '(なし)',
+    done: '完了', all: 'All', noneRepo: '(なし)',
     duePrefix: '期限', msDuePrefix: 'MS期限', dueToday: '今日まで', noDueDate: '期限なし',
-    dueIn: 'あと{n}日', dueOver: '{n}日超過', assignedTab: '作業アイテム {n}', assignedTabOver: '作業アイテム {n} (超過{m})',
+    dueIn: 'あと{n}日', dueOver: '{n}日超過', assignedTab: 'Items {n}', assignedTabOver: 'Items {n} ({m} overdue)',
+    tabOverdue: '期限超過 {n} 件',
     assignedLimit: '{n} 件まで表示',
     relatedMrs: '関連 MR',
     mrSyncError: 'MR の更新を取得できませんでした。前回取得した情報を表示しています。',
@@ -40,12 +42,14 @@ const UI = {
   },
   en: {
     appTitle: 'Notice Me, Senpai!',
-    tabList: 'To-Do', tabAssigned: 'Work items', tabSettings: 'Settings', refresh: 'Refresh',
+    tabList: 'Activity', tabAssigned: 'Items', tabSettings: 'Settings', refresh: 'Refresh',
+    winMinimize: 'Minimize', winClose: 'Close',
     loading: 'Loading…', statusCount: '{n} to-dos',
     emptyTodos: 'No To-Dos', emptyAssigned: 'No work items assigned to you',
     done: 'Done', all: 'All', noneRepo: '(none)',
     duePrefix: 'Due', msDuePrefix: 'Milestone', dueToday: 'today', noDueDate: 'No due date',
-    dueIn: 'in {n}d', dueOver: '{n}d overdue', assignedTab: 'Work items {n}', assignedTabOver: 'Work items {n} ({m} overdue)',
+    dueIn: 'in {n}d', dueOver: '{n}d overdue', assignedTab: 'Items {n}', assignedTabOver: 'Items {n} ({m} overdue)',
+    tabOverdue: '{n} overdue',
     assignedLimit: 'Showing the first {n}',
     relatedMrs: 'Related MRs',
     mrSyncError: 'Could not refresh MR updates. Showing the last available information.',
@@ -217,16 +221,14 @@ function assignedPatch(result, lang = 'ja') {
 }
 
 // ---------- 表示用の文字列 ----------
-// 作業アイテムタブのラベル。件数は全リポジトリの合計で、絞り込みの影響を受けない。
-// total は上限で切られる前の総数（x-total）。超過数は取得できた分だけで数える
+// 作業アイテムタブのラベルと、取得できた全アイテムの期限超過を伝える文言。
 function assignedTabLabel(items, opts = {}) {
-  const { lang = 'ja', total } = opts;
-  if (!items.length) return tr(lang, 'tabAssigned');
-  const over = countOverdue(items, opts);
-  const n = total ?? items.length;
-  return over
-    ? tr(lang, 'assignedTabOver', { n, m: over })
-    : tr(lang, 'assignedTab', { n });
+  const { lang = 'ja' } = opts;
+  const overdue = countOverdue(items, opts);
+  return {
+    label: tr(lang, 'tabAssigned'),
+    warning: overdue ? tr(lang, 'tabOverdue', { n: overdue }) : '',
+  };
 }
 
 

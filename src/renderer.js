@@ -16,11 +16,21 @@ document.querySelectorAll('.tab').forEach(tab => {
 });
 
 // ---------- 言語 ----------
-// HTML 側に置いた固定文言を data-i18n で置き換える
+// data-i18n の文言と操作ラベルを現在の言語で表示する
 function applyI18n() {
   document.documentElement.lang = lang === 'en' ? 'en' : 'ja';
   document.title = tr(lang, 'appTitle');
-  for (const e of document.querySelectorAll('[data-i18n]')) e.textContent = tr(lang, e.dataset.i18n);
+  for (const e of document.querySelectorAll('[data-i18n]')) {
+    const label = tr(lang, e.dataset.i18n);
+    if (e.id === 'refresh' || e.dataset.view === 'settings') {
+      // アイコンのみのボタンは文言を aria-label / title に入れる（SVG を消さない）
+      e.setAttribute('aria-label', label);
+      e.title = label;
+    } else {
+      e.textContent = label;
+    }
+  }
+  for (const e of document.querySelectorAll('[data-i18n-label]')) e.setAttribute('aria-label', tr(lang, e.dataset.i18nLabel));
 }
 
 // ---------- 共通 ----------
@@ -31,25 +41,56 @@ function el(tag, cls, text) {
   return e;
 }
 
+function renderWarning(control, label, warning, title = '') {
+  if (!warning) {
+    if (title) control.title = title;
+    else control.removeAttribute('title');
+    control.removeAttribute('aria-label');
+    return;
+  }
+  const badge = el('span', 'warning-count');
+  badge.setAttribute('aria-hidden', 'true');
+  control.title = title ? `${title} · ${warning}` : warning;
+  control.setAttribute('aria-label', `${label} (${warning})`);
+  control.append(badge);
+}
+
 // 選択肢を並べ、クリックで filter[key] を切り替える。消えた選択肢は 'all' に戻す
-function renderChips(container, key, entries, labelOf = v => v, titleOf = () => '') {
+function renderChips(container, key, entries, labelOf = v => v, titleOf = () => '', overdueOf) {
   if (filter[key] !== 'all' && !entries.has(filter[key])) filter[key] = 'all';
+  const focused = container.contains(document.activeElement) ? document.activeElement.dataset.value : undefined;
   container.replaceChildren();
   if (entries.size === 0) return;
-  const total = [...entries.values()].reduce((a, b) => a + b, 0);
-  for (const [value, n] of [['all', total], ...entries]) {
+  const all = [...entries.values()].reduce((sum, n) => sum + n, 0);
+  for (const [value, n] of [['all', all], ...entries]) {
     const label = value === 'all' ? tr(lang, 'all') : labelOf(value);
-    const c = el('span', `chip${filter[key] === value ? ' active' : ''}`);
-    c.append(`${label} ${n}`);
-    c.title = value === 'all' ? '' : titleOf(value);
+    const active = filter[key] === value;
+    const c = el(overdueOf ? 'button' : 'span', `chip${active ? ' active' : ''}`);
+    c.append(`${label} `, el('span', 'chip-count', n));
+    const title = value === 'all' ? '' : titleOf(value);
+    if (overdueOf) {
+      c.type = 'button';
+      c.dataset.value = value;
+      c.setAttribute('aria-pressed', String(active));
+      const overdue = overdueOf(value);
+      renderWarning(c, c.textContent, overdue ? tr(lang, 'tabOverdue', { n: overdue }) : '', title);
+    } else {
+      c.title = title;
+    }
     c.onclick = () => { filter[key] = value; render(current); };
     container.append(c);
+    if (focused === value || (value === 'all' && focused !== undefined && !entries.has(focused))) {
+      c.focus({ preventScroll: true });
+    }
   }
 }
 
 function countBy(items, keyOf) {
   const m = new Map();
-  for (const it of items) m.set(keyOf(it), (m.get(keyOf(it)) ?? 0) + 1);
+  for (const it of items) {
+    const key = keyOf(it);
+    m.set(key, (m.get(key) ?? 0) + 1);
+  }
   return m;
 }
 
@@ -169,14 +210,19 @@ function assignedRow(i, relatedMrsByIssue) {
   return li;
 }
 
-function renderAssigned(items, limited, total, error, relatedMrsByIssue = {}) {
-  renderChips($('#assignedRepos'), 'assignedRepo', countBy(items, issueRepo), shortName, p => p);
+function renderAssigned(items, limited, error, relatedMrsByIssue = {}) {
+  const overdueBy = (group, keyOf) => value => countOverdue(value === 'all' ? group : group.filter(i => keyOf(i) === value));
+  renderChips($('#assignedRepos'), 'assignedRepo', countBy(items, issueRepo), shortName, p => p, overdueBy(items, issueRepo));
   const inRepo = items.filter(i => filter.assignedRepo === 'all' || issueRepo(i) === filter.assignedRepo);
   // 種別が 1 つ以下なら選ぶ意味がないので行ごと隠す（空の Map を渡すと選択も 'all' に戻る）
   const types = countBy(inRepo, workItemType);
-  renderChips($('#assignedTypes'), 'assignedType', types.size >= 2 ? types : new Map(), v => workItemTypeLabel(lang, v));
+  renderChips($('#assignedTypes'), 'assignedType', types.size >= 2 ? types : new Map(),
+    v => workItemTypeLabel(lang, v), undefined, overdueBy(inRepo, workItemType));
   const shown = inRepo.filter(i => filter.assignedType === 'all' || workItemType(i) === filter.assignedType);
-  $('#assignedTab').textContent = assignedTabLabel(items, { lang, total });
+  const tab = $('#assignedTab');
+  const { label, warning } = assignedTabLabel(items, { lang });
+  tab.textContent = label;
+  renderWarning(tab, label, warning);
   $('#assignedLimit').classList.toggle('hidden', !limited);
   $('#assignedLimit').textContent = tr(lang, 'assignedLimit', { n: ASSIGNED_LIMIT });
 
@@ -194,11 +240,15 @@ function render(s) {
   const message = [s.error, s.assignedError].filter(Boolean).join(' / ');
   $('#error').style.display = message ? 'block' : 'none';
   $('#error').textContent = message;
-  $('#status').textContent = s.loading ? tr(lang, 'loading')
-    : s.updatedAt ? `${tr(lang, 'statusCount', { n: s.count })} / ${new Date(s.updatedAt).toLocaleTimeString()}` : '';
+  const status = $('#status');
+  status.textContent = s.loading ? tr(lang, 'loading') : '';
+  if (!s.loading && s.updatedAt) {
+    const count = tr(lang, 'statusCount', { n: s.count });
+    status.append(s.count > 0 ? el('span', 'status-count', count) : count, ` / ${new Date(s.updatedAt).toLocaleTimeString()}`);
+  }
   renderTodos(s.todos, s.error);
   $('#mrSyncError').hidden = !s.mrSyncError;
-  renderAssigned(s.assigned ?? [], s.assignedLimited, s.assignedTotal, s.error || s.assignedError, s.relatedMrsByIssue ?? {});
+  renderAssigned(s.assigned ?? [], s.assignedLimited, s.error || s.assignedError, s.relatedMrsByIssue ?? {});
   drawBadge(s.count);
 }
 
@@ -209,7 +259,7 @@ function drawBadge(count) {
   const o = document.createElement('canvas');
   o.width = o.height = 16;
   let g = o.getContext('2d');
-  g.fillStyle = '#d93025';
+  g.fillStyle = '#555';
   g.beginPath(); g.arc(8, 8, 8, 0, Math.PI * 2); g.fill();
   g.fillStyle = '#fff';
   g.font = `bold ${label.length > 2 ? 7 : label.length > 1 ? 9 : 11}px Segoe UI`;
@@ -219,7 +269,7 @@ function drawBadge(count) {
   const t = document.createElement('canvas');
   t.width = t.height = 32;
   g = t.getContext('2d');
-  g.fillStyle = count > 0 ? '#e24329' : '#888';
+  g.fillStyle = count > 0 ? '#555' : '#888';
   g.beginPath(); g.arc(16, 16, 15, 0, Math.PI * 2); g.fill();
   if (count > 0) {
     g.fillStyle = '#fff';
@@ -268,6 +318,9 @@ $('#form').onsubmit = async e => {
 };
 
 $('#refresh').onclick = () => window.api.refresh();
+$('#win-minimize').onclick = () => window.api.winMinimize();
+$('#win-close').onclick = () => window.api.winClose();
+window.api.getVersion().then(version => { $('#build-version').textContent = `BUILD ${version}`; });
 window.api.onState(render);
 window.api.getState().then(render);
 applyI18n();

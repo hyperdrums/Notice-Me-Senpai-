@@ -187,27 +187,18 @@ test('countOverdue: 期限なしは超過に数えない（今日までも超過
   assert.equal(countOverdue(items, { today: TODAY }), 2);
 });
 
-test('assignedTabLabel: 合計と、あれば超過数', () => {
-  const over = [{ due_date: '2026-11-01' }, { due_date: null }, {}];
-  const noOver = [{ due_date: '2026-11-10' }, { due_date: null }];
-  assert.equal(assignedTabLabel(over, { today: TODAY }), '作業アイテム 3 (超過1)');
-  assert.equal(assignedTabLabel(over, { today: TODAY, lang: 'en' }), 'Work items 3 (1 overdue)');
-  assert.equal(assignedTabLabel(noOver, { today: TODAY }), '作業アイテム 2');
-  assert.equal(assignedTabLabel(noOver, { today: TODAY, lang: 'en' }), 'Work items 2');
-  assert.equal(assignedTabLabel([{}], { today: TODAY }), '作業アイテム 1');
+test('assignedTabLabel: Items と日英の期限超過文言を別々に返す', () => {
+  const items = [{ due_date: '2026-11-01' }, { due_date: '2026-11-02' }, {}];
+  assert.deepEqual(assignedTabLabel(items, { today: TODAY }), { label: 'Items', warning: '期限超過 2 件' });
+  assert.deepEqual(assignedTabLabel(items, { today: TODAY, lang: 'en' }), { label: 'Items', warning: '2 overdue' });
 });
 
-test('assignedTabLabel: total があれば取得できた行数より優先する', () => {
-  const over = [{ due_date: '2026-11-01' }, {}];
-  assert.equal(assignedTabLabel(over, { today: TODAY, total: 150 }), '作業アイテム 150 (超過1)');
-  assert.equal(assignedTabLabel(over, { today: TODAY, total: 150, lang: 'en' }), 'Work items 150 (1 overdue)');
-  assert.equal(assignedTabLabel([{}], { today: TODAY, total: 150 }), '作業アイテム 150');
-  assert.equal(assignedTabLabel(over, { today: TODAY, total: null }), '作業アイテム 2 (超過1)');
-});
-
-test('assignedTabLabel: 0 件ならタブ名だけ', () => {
-  assert.equal(assignedTabLabel([]), '作業アイテム');
-  assert.equal(assignedTabLabel([], { lang: 'en' }), 'Work items');
+test('assignedTabLabel: 期限超過が無ければ警告文言は空', () => {
+  const items = [{ due_date: '2026-11-03' }, { due_date: '2026-11-10' }, { due_date: null }, {}];
+  for (const lang of ['ja', 'en']) {
+    assert.deepEqual(assignedTabLabel(items, { today: TODAY, lang }), { label: 'Items', warning: '' });
+    assert.deepEqual(assignedTabLabel([], { lang }), { label: 'Items', warning: '' });
+  }
 });
 
 test('reachedLimit: x-total があれば上限を超えたかで決まる', () => {
@@ -266,17 +257,22 @@ test('todoRef: MR は !、WorkItem を含むそれ以外は #', () => {
 
 // ---------- 翻訳 ----------
 test('tr: 言語で切り替わり、{n} を差し込む', () => {
-  assert.equal(tr('ja', 'tabList'), 'To-Do');
-  assert.equal(tr('en', 'tabList'), 'To-Do');
+  for (const lang of ['ja', 'en']) {
+    assert.equal(tr(lang, 'tabList'), 'Activity');
+    assert.equal(tr(lang, 'tabAssigned'), 'Items');
+    assert.equal(tr(lang, 'tabSettings'), 'Settings');
+    assert.equal(tr(lang, 'all'), 'All');
+  }
   assert.equal(tr('ja', 'statusCount', { n: 4 }), '4 件');
   assert.equal(tr('en', 'statusCount', { n: 4 }), '4 to-dos');
-  assert.equal(tr('en', 'assignedTabOver', { n: 3, m: 1 }), 'Work items 3 (1 overdue)');
+  assert.equal(tr('en', 'assignedTabOver', { n: 3, m: 1 }), 'Items 3 (1 overdue)');
   assert.equal(tr('ja', 'assignedLimit', { n: 100 }), '100 件まで表示');
   assert.equal(tr('en', 'assignedLimit', { n: 100 }), 'Showing the first 100');
 });
 
 test('tr: 未知の lang は日本語、未知の key はそのまま返す', () => {
-  assert.equal(tr('fr', 'tabAssigned'), '作業アイテム');
+  assert.equal(tr('fr', 'tabAssigned'), 'Items');
+  assert.equal(tr('fr', 'refresh'), '更新');
   assert.equal(tr('en', 'shikatanai_key'), 'shikatanai_key');
 });
 
@@ -350,13 +346,15 @@ test('workItemTone: 翻訳を持つ種別は必ず色を持つ', () => {
   assert.equal(workItemTone('unknown_type'), 'muted');
 });
 
-test('色クラスは CSS に明るい画面用と暗い画面用の両方がある', () => {
+test('CSS はダーク固定で、種別の色クラスは各 1 定義', () => {
   const css = fs.readFileSync(path.join(__dirname, '..', 'src', 'index.html'), 'utf8');
+  assert.match(css, /:root\s*\{\s*color-scheme:\s*dark\s*;/);
+  assert.doesNotMatch(css, /prefers-color-scheme/);
   const tones = new Set([...Object.values(ACTION_TONES), ...Object.values(WORK_ITEM_TONES)]);
   for (const tone of tones) {
     // 色の定義だけを数える（`.tag.t-danger` のような見た目の上書きは除く）
-    const n = [...css.matchAll(new RegExp(`(?<![\\w-])\\.t-${tone}\\s*\\{`, 'g'))].length;
-    assert.equal(n, 2, `.t-${tone} が CSS に ${n} 個しか無い（明るい画面用と暗い画面用の 2 つ必要）`);
+    const n = [...css.matchAll(new RegExp(`(?<![\\w-])\\.t-${tone}\\s*\\{\\s*--tone:`, 'g'))].length;
+    assert.equal(n, 1, `.t-${tone} の色定義は 1 つ必要`);
   }
 });
 
@@ -369,19 +367,28 @@ test('mrStatus: 状態と下書きを見た目の種類に寄せる', () => {
   assert.equal(mrStatus({ state: 'locked' }), 'unknown');
 });
 
-test('MR の状態は、文言と CSS（明暗 2 つ＋記号）を必ず持つ', () => {
+test('MR の各状態は日英の文言、1 つの色定義、固有の記号を持つ', () => {
   const css = fs.readFileSync(path.join(__dirname, '..', 'src', 'index.html'), 'utf8');
+  const marks = new Set();
   for (const kind of Object.keys(MR_STATUS_LABELS)) {
-    assert.equal([...css.matchAll(new RegExp(`\\.s-${kind}\\s*\\{`, 'g'))].length, 2, `.s-${kind} は明暗 2 つ必要`);
-    assert.match(css, new RegExp(`\\.s-${kind}::before\\s*\\{\\s*content:`), `.s-${kind} に記号がない`);
+    const colors = css.matchAll(new RegExp(`\\.s-${kind}\\s*\\{\\s*--status:`, 'g'));
+    assert.equal([...colors].length, 1, `.s-${kind} の色定義は 1 つ必要`);
+    const mark = css.match(new RegExp(`\\.s-${kind}::before\\s*\\{\\s*content:\\s*'([^']+)'`))?.[1];
+    assert.ok(mark && !marks.has(mark), `.s-${kind} に固有の記号がない`);
+    marks.add(mark);
   }
-  for (const label of Object.values(MR_STATUS_LABELS)) assert.ok(UI.ja[label] && UI.en[label], `${label} の訳がない`);
+  const labels = Object.values(MR_STATUS_LABELS);
+  for (const lang of ['ja', 'en']) {
+    const translations = labels.map(label => UI[lang][label]);
+    assert.ok(translations.every(Boolean), `${lang} の状態の訳がない`);
+    assert.equal(new Set(translations).size, labels.length, `${lang} の状態の訳は重複できない`);
+  }
 });
 
 test('配色: 絞り込みの選択中に警告色（赤）を使わない', () => {
   const css = fs.readFileSync(path.join(__dirname, '..', 'src', 'index.html'), 'utf8');
-  const rule = css.match(/\.chip\.active\s*\{([^}]*)\}/)[1];
-  assert.doesNotMatch(rule, /danger|accent|#e24329/);
+  assert.match(css, /:is\(header \.tab\.active, \.chip\.active\)\s*\{\s*--button-face:\s*var\(--accent-primary\);/);
+  assert.match(css, /--accent-primary:\s*var\(--lime\);/);
 });
 
 // ---------- 言語設定が見つけられるか ----------
