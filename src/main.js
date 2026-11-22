@@ -349,7 +349,8 @@ function createTray() {
 
 // ---------- IPC ----------
 ipcMain.on('win-minimize', ({ sender }) => BrowserWindow.fromWebContents(sender)?.minimize());
-ipcMain.on('win-close', ({ sender }) => BrowserWindow.fromWebContents(sender)?.close());
+// × は最小化（タスクバーのバッジを残すため）。close() 経由の暗黙の preventDefault に依存しない
+ipcMain.on('win-close', ({ sender }) => BrowserWindow.fromWebContents(sender)?.minimize());
 ipcMain.handle('get-state', () => state);
 ipcMain.handle('get-version', () => app.getVersion());
 ipcMain.handle('get-config', () => {

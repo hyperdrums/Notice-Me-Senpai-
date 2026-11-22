@@ -119,9 +119,62 @@ async function shot(name, dir = OUT) {
 }
 
 // OS の配色設定を変えても、ネイティブコントロールを含め同じダークの画面になる。
-// 比較は #todos / #assignedItems の描画だけを見る（#status の更新時刻は秒で動くため対象外）。
+// 検証方法: 全要素（::before / ::after の疑似要素と寸法を含む）の計算スタイルを
+// ダーク/ライトで比較し、差分をプロパティ名と両値で報告する。
+// #status は更新時刻が秒で動くため、比較中だけ textContent を空にする。
 async function checkDarkTheme(label) {
-  const hashes = {};
+  // hover/active のトランジション途中の値（drop-shadow のpx等）が採取間でズレて誤検出しないよう、
+  // 採取中だけ各要素の style に transition/animation を止める値を当てる（静的な計算値に固定）。
+  // CSP style-src 'self' では <style> 注入が弾かれるため、DOM API の element.style を使う
+  const freeze = () => evl(`(() => {
+    for (const el of document.querySelectorAll('*')) {
+      el.style.setProperty('transition', 'none', 'important');
+      el.style.setProperty('animation', 'none', 'important');
+    }
+  })()`);
+  const collect = () => evl(`(() => {
+    const restore = [];
+    for (const e of document.querySelectorAll('#status')) { restore.push([e, e.textContent]); e.textContent = ''; }
+    const keyOf = (el, i) => el.id ? '#' + el.id
+      : (typeof el.className === 'string' && el.className.trim())
+        ? el.tagName.toLowerCase() + '.' + el.className.trim().split(/\\s+/).join('.')
+        : el.tagName.toLowerCase() + '[#' + i + ']';
+    const snap = (el, pseudo) => {
+      const cs = getComputedStyle(el, pseudo);
+      const out = [];
+      for (let i = 0; i < cs.length; i++) { const p = cs[i]; out.push(p + '=' + cs.getPropertyValue(p)); }
+      return out.join('\\u0001');
+    };
+    const parts = [];
+    [...document.querySelectorAll('*')].forEach((el, i) => {
+      const k = keyOf(el, i);
+      const r = el.getBoundingClientRect();
+      parts.push(k + '\\u0002' + Math.round(r.x) + ',' + Math.round(r.y) + 'x' + Math.round(r.width) + 'x' + Math.round(r.height) + '\\u0002' + snap(el, null));
+      parts.push(k + '::before\\u0002\\u0002' + snap(el, '::before'));
+      parts.push(k + '::after\\u0002\\u0002' + snap(el, '::after'));
+    });
+    for (const [e, t] of restore) e.textContent = t;
+    return parts.join('\\u0003');
+  })()`);
+  const diff = (a, b) => {
+    const pa = a.split('\u0003'), pb = b.split('\u0003');
+    const out = [];
+    let n = 0;
+    for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+      if (pa[i] === pb[i]) continue;
+      const [ka, ra, sa = ''] = (pa[i] || '').split('\u0002');
+      const [kb, rb, sb = ''] = (pb[i] || '').split('\u0002');
+      if (ka !== kb || ra !== rb) { out.push(`${ka} @${ra} → ${kb} @${rb}`); n++; continue; }
+      const va = sa.split('\u0001'), vb = sb.split('\u0001');
+      for (let j = 0; j < Math.max(va.length, vb.length); j++) {
+        if (va[j] === vb[j]) continue;
+        out.push(`${ka} ${va[j]} → ${vb[j]}`);
+        n++;
+      }
+    }
+    return { head: out.slice(0, 20), total: n };
+  };
+  const captures = {};
   for (const scheme of ['dark', 'light']) {
     await cdp.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: scheme }] });
     const styles = await evl(`({
@@ -129,30 +182,14 @@ async function checkDarkTheme(label) {
       schemes: [...document.querySelectorAll('html, select, input')].map(e => getComputedStyle(e).colorScheme),
     })`);
     check(`${label}: OS ${scheme} 設定でもルートと設定入力は dark`,
-      styles.emulated && styles.schemes.every(value => value === 'dark'), JSON.stringify(styles));
-    // 画面全体のスクリーンショットは、スクロールバーの自動隐藏や更新時刻で差分が出るため、
-    // 計算スタイルのハッシュで「描画が変わらない」ことを検証する
-    hashes[scheme] = await evl(`(() => {
-      const seen = new Set();
-      const parts = [];
-      const walk = (root) => {
-        for (const el of root.querySelectorAll('*')) {
-          if (el.closest('#status')) continue;
-          const cs = getComputedStyle(el);
-          const key = [el.tagName, el.className, cs.color, cs.backgroundColor, cs.borderColor,
-            cs.borderTopWidth, cs.borderLeftWidth, cs.clipPath, cs.boxShadow, cs.fontStyle, cs.fontWeight,
-            cs.getPropertyValue('--bg'), cs.getPropertyValue('--text'), cs.getPropertyValue('--accent'),
-            cs.getPropertyValue('--danger')].join('|');
-          if (!seen.has(key)) { seen.add(key); parts.push(key); }
-        }
-      };
-      walk(document);
-      return parts.join('\\n');
-    })()`);
+      styles.emulated && styles.schemes.every(v => v === 'dark'), JSON.stringify(styles));
+    await freeze();
+    captures[scheme] = await collect();
   }
   await cdp.send('Emulation.setEmulatedMedia', { features: [] });
-  check(`${label}: OS の明暗設定で描画が変わらない`, hashes.dark === hashes.light,
-    hashes.dark === hashes.light ? '' : `dark ${hashes.dark.length}B / light ${hashes.light.length}B`);
+  const d = diff(captures.dark, captures.light);
+  check(`${label}: OS の明暗設定で描画が変わらない`, d.total === 0,
+    d.total === 0 ? '' : `${d.total} 件の差分（先頭 20 件）\n` + d.head.join('\n'));
 }
 
 let app = null;
@@ -203,7 +240,7 @@ let m = null;
 
   const status = await evl(`document.querySelector('#status').textContent`);
   check('ヘッダに件数と更新時刻', /4 件/.test(status), status);
-  check('エラーバー非表示', (await evl(`document.querySelector('#error').style.display`)) === 'none');
+  check('エラーバー非表示', await evl(`document.querySelector('#error').classList.contains('hidden')`));
 
   const tags = await evl(`[...document.querySelectorAll('#todos .tag')].map(e => e.textContent).join(',')`);
   check('種別ラベル', tags === 'レビュー依頼,アサイン,メンション,アサイン', tags);
@@ -306,6 +343,7 @@ let m = null;
   await checkAssignedWarning('Items と警告バッジを表示し、超過数は読み上げとツールチップで伝える', '期限超過 1 件');
   await click('.tab[data-view=assigned]');
   await waitFor('作業アイテム一覧 7 件', `document.querySelectorAll(${JSON.stringify(ROWS)}).length === 7`);
+  await checkDarkTheme('作業アイテム');
   const projectWarnings = await chipWarnings('#assignedRepos');
   const typeWarnings = await chipWarnings('#assignedTypes');
   check('期限超過があるプロジェクトと All にだけ同じ 16px の警告を付ける',
@@ -375,7 +413,7 @@ let m = null;
   await cdp.send('Input.dispatchKeyEvent', { ...enterKey, type: 'keyDown', text: '\r' });
   await cdp.send('Input.dispatchKeyEvent', { ...enterKey, type: 'keyUp' });
   await waitFor('タスクのみ', `document.querySelectorAll(${JSON.stringify(ROWS)}).length === 2`);
-  check('種別で絞り込み', (await count(ROWS)) === 2);
+  check('キーボード Enter で種別を絞り込める', (await count(ROWS)) === 2);
   check('キーボードで選択した chip は再描画後もフォーカスと選択状態を持つ', await evl(
     `document.activeElement.matches('#assignedTypes .chip[data-value="task"][aria-pressed="true"]')`));
   await checkAssignedWarning('絞り込みで超過行が隠れてもタブの警告を保つ', '期限超過 1 件');
@@ -457,7 +495,7 @@ let m = null;
   await waitFor('MR 同期だけのエラー', `!document.querySelector('#mrSyncError').hidden`);
   check('MR 同期に失敗しても To-Do と最後の MR 情報を維持する',
     (await count('#todos li')) === 4 &&
-    await evl(`document.querySelector('#error').style.display === 'none' && ${badgeState(2, 23, 2, 45)} === 'クローズ（未マージ）'`));
+    await evl(`document.querySelector('#error').classList.contains('hidden') && ${badgeState(2, 23, 2, 45)} === 'クローズ（未マージ）'`));
   await m.fail('mergeRequests', 0);
   await m.transitionMr('reopen-issue'); // 後続の既存テストでは初期の7件が必要。
   await refreshMrs();
@@ -520,8 +558,8 @@ let m = null;
 
   // 9-2) 作業アイテムだけ取得に失敗しても To-Do は動き続ける
   const errorText = `document.querySelector('#error').textContent`;
-  const errorShown = `document.querySelector('#error').style.display === 'block'`;
-  const errorHidden = `document.querySelector('#error').style.display === 'none'`;
+  const errorShown = `!document.querySelector('#error').classList.contains('hidden')`;
+  const errorHidden = `document.querySelector('#error').classList.contains('hidden')`;
   await m.fail('issues', 500);
   await m.push();
   await click('#refresh');

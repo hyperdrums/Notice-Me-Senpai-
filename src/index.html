@@ -3,269 +3,9 @@
 <head>
 <meta charset="utf-8">
 <meta name="color-scheme" content="dark">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'self'">
 <title>Notice Me, Senpai!</title>
-<style>
-  /* 操作・選択はライム系、警告はコーラル系。 */
-  :root {
-    color-scheme: dark;
-    --charcoal: #0a0a0a;
-    --hazard-cream: #f5f1e7;
-    --lime: #c8f000;
-    --accent-primary: var(--lime);
-    --accent-hover: var(--lime);
-    --accent-edge: #8fae00;
-    --text-on-accent: #000000;
-    --accent-danger: #ff2442;
-    --accent-yellow: #ffe000;
-    --bg-secondary: #1c1c1e;
-    --bg-elevated: #303030;
-    --bg: var(--charcoal);
-    --text: #ffffff;
-    --muted: #bdbdbd;
-    --line: #4a4a4a;
-    --row-hover: var(--bg-elevated);
-    --band: var(--bg-elevated);
-    --field: var(--bg-elevated);
-    --panel: var(--bg-secondary);
-    --control-bg: #303030;
-    --control-fg: #ffffff;
-    --control-edge: #4a4a4a;
-    --shadow: #000000;
-    --focus-ring: var(--accent-primary);
-    --dots: var(--line);
-    --danger: var(--accent-danger);
-    --danger-text: #ff625c;
-    --danger-fg: var(--charcoal);
-    --soon: var(--accent-yellow);
-    --danger-wash: color-mix(in srgb, var(--danger) 9%, var(--bg));
-    --mono-font: Consolas, "Cascadia Mono", "Yu Gothic UI", monospace;
-  }
-  /* 種別ラベルは無彩色。対応が必要な種別だけ警告色を使う。 */
-  .t-danger { --tone: var(--danger); } .t-muted { --tone: var(--muted); }
-  /* MR の状態色は記号に使う。 */
-  .s-open { --status: #3fb950; } .s-draft { --status: var(--muted); } .s-merged { --status: #b692fb; }
-  .s-closed { --status: #ff7164; } .s-unknown { --status: var(--muted); }
-  * { box-sizing: border-box; }
-  body { margin: 0; background: var(--bg); font: 13px "Segoe UI", "Yu Gothic UI", sans-serif; color: var(--text); }
-  /* 既存の要素に角切りを適用。操作要素は面だけを切り、外側のフォーカス枠を残す。 */
-  .cut, body > section { --corner-size: 13px; }
-  .cut-sm, button, .chip.active { --corner-size: 9px; }
-  .cut, .cut-sm, body > section::before, button:not(.tab, .chip)::before,
-  header .tab:is(.active, :hover, :active)::before, .chip.active::before {
-    clip-path: polygon(0 0, calc(100% - var(--corner-size)) 0, 100% var(--corner-size),
-                       100% 100%, var(--corner-size) 100%, 0 calc(100% - var(--corner-size)));
-  }
-  .window-titlebar {
-    position: sticky; top: 0; z-index: 1;
-    display: flex; gap: 6px; padding: 7px 8px 13px;
-    background: repeating-linear-gradient(120deg, var(--hazard-cream) 0 11px, var(--charcoal) 11px 17px)
-                bottom / 100% 7px no-repeat var(--charcoal);
-    --focus-ring: var(--lime);
-  }
-  .window-drag {
-    flex: 1; min-width: 0; display: flex; align-items: center; justify-content: space-between;
-    gap: 10px; padding: 0 4px; -webkit-app-region: drag;
-  }
-  .window-label {
-    pointer-events: none; white-space: nowrap;
-    font: 700 11px/1.4 var(--mono-font); letter-spacing: .11em;
-  }
-  .window-label:first-child { color: var(--lime); }
-  #build-version { color: var(--muted); overflow: hidden; text-overflow: ellipsis; }
-  @media (max-width: 320px) { #build-version { display: none; } }
-  header {
-    display: grid; grid-template-columns: repeat(3, max-content) minmax(0, 1fr) minmax(0, max-content) max-content;
-    gap: 9px 8px; align-items: center; padding: 7px 10px 9px;
-    border-bottom: 1px solid var(--line);
-  }
-  header .tab {
-    display: inline-flex; align-items: center; justify-content: center; gap: 5px;
-    min-width: 0; padding: 5px 9px 7px; white-space: nowrap;
-    background: var(--control-bg); box-shadow: 3px 3px 0 var(--shadow);
-    line-height: 18px; font-variant-numeric: tabular-nums;
-  }
-  header .tab:is(.active, :hover, :active) {
-    background: transparent; box-shadow: none;
-    --cut-shadow: drop-shadow(3px 3px 0 var(--shadow));
-  }
-  #status {
-    color: var(--muted); font: 600 12px var(--mono-font); font-variant-numeric: tabular-nums;
-    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; text-align: right;
-  }
-  #status .status-count { color: var(--text); }
-  #refresh svg { display: block; }
-  header .tab[data-view="settings"] { display: inline-flex; align-items: center; justify-content: center; }
-  header .tab[data-view="settings"] svg { display: block; }
-  @media (max-width: 400px) {
-    header { grid-template-columns: max-content minmax(0, 1fr) max-content; column-gap: 6px; }
-    header .tab {
-      justify-self: start; max-width: 100%; padding-inline: 5px; font-size: 12px;
-      white-space: normal; overflow-wrap: anywhere;
-    }
-    header .spacer { display: none; }
-    #status { grid-column: 1 / 3; text-align: left; }
-    #refresh { justify-self: end; }
-  }
-  body > section {
-    position: relative; isolation: isolate;
-    margin: 8px 10px 12px; padding: 4px 0 9px 5px;
-  }
-  body > section::before, body > section::after { content: ''; position: absolute; pointer-events: none; }
-  body > section::before {
-    inset: 0; z-index: -2; background: var(--panel); border-left: 5px solid var(--line);
-  }
-  body > section::after {
-    top: 4px; right: 10px; width: 84px; height: 84px; z-index: -1; opacity: .24;
-    background: radial-gradient(var(--dots) 1px, transparent 1px) 0 0 / 12px 12px;
-  }
-  #error {
-    display: none; padding: 7px 10px; border-inline-start: 4px solid var(--danger); border-bottom: 1px solid var(--line);
-    background: var(--danger-wash); color: var(--danger-text); overflow-wrap: anywhere;
-  }
-  ul { list-style: none; margin: 0; padding: 0; }
-  li { display: flex; gap: 8px; padding: 8px 10px; border-bottom: 1px solid var(--line); cursor: pointer; }
-  li:not(.empty, .separator):is(:hover, :focus-within) {
-    background: var(--row-hover); box-shadow: inset 2px 0 var(--muted);
-  }
-  li .main { flex: 1; min-width: 0; }
-  li .title { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  li .meta, li .body { color: var(--muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  /* 種別ラベルは背景を塗らず、枠線と文字色だけ。行の主役（タイトル・期限）より目立たせない */
-  .tag { display: inline-block; padding: 0 5px; border-radius: 3px; font: 11px/15px var(--mono-font); margin-right: 5px;
-         color: var(--tone, var(--muted)); background: none;
-         border: 1px solid var(--line); }
-  /* 対応が必要な種類（CI 失敗・インシデントなど）だけは塗りで強調する */
-  .tag.t-danger { color: var(--danger-fg); background: var(--tone); border-color: var(--tone); }
-  /* MR の状態: 枠も塗りもなし。色は先頭の記号だけに付け、文字は補足と同じ控えめな色 */
-  .mr-status { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; line-height: 16px;
-               color: var(--muted); white-space: nowrap; }
-  .mr-status::before { color: var(--status); font-size: 11px; line-height: 1; }
-  .s-open::before { content: '●'; } .s-draft::before { content: '○'; } .s-merged::before { content: '✓'; }
-  .s-closed::before { content: '✕'; } .s-unknown::before { content: '?'; }
-  button {
-    padding: 0; border: 0; background: transparent; color: var(--button-text, var(--control-fg));
-    position: relative; isolation: isolate; font: inherit; font-weight: 800;
-    font-style: italic; letter-spacing: -.015em; cursor: pointer;
-  }
-  button:not(.tab, .chip) {
-    margin: 0 3px 3px 0; padding: 4px 11px 7px;
-    --cut-shadow: drop-shadow(3px 3px 0 var(--shadow));
-  }
-  .window-titlebar > button {
-    flex: 0 0 36px; padding: 0 3px 4px 0;
-    font: 800 18px/24px var(--mono-font);
-    -webkit-app-region: no-drag;
-  }
-  :is(button:not(.tab, .chip), header .tab:is(.active, :hover, :active), .chip.active)::before {
-    content: ''; position: absolute; inset: 0; pointer-events: none;
-    z-index: -1; background: var(--button-face, var(--control-bg));
-    border-bottom: 3px solid var(--button-edge, var(--control-edge));
-    border-right: 3px solid var(--button-edge, var(--control-edge));
-  }
-  :is(header .tab.active, .chip.active) {
-    --button-face: var(--accent-primary);
-    --button-text: var(--text-on-accent);
-    --button-edge: var(--accent-edge);
-    /* 影は角切りの輪郭に沿わせ、レイアウト幅には含めない。 */
-    --cut-shadow: drop-shadow(4px 4px 0 var(--shadow));
-  }
-  :is(button, form input, form select, .assigned-item-link, .related-mr-link):focus-visible {
-    outline: 3px solid var(--focus-ring); outline-offset: 2px;
-  }
-  :is(button, .chip) {
-    filter: var(--cut-shadow, none);
-    transition: transform .12s, filter .12s;
-  }
-  :is(button, .chip):hover:not(:disabled) { transform: translateY(-2px); }
-  button:is(:hover, :active):not(:disabled, .chip) {
-    --button-face: var(--accent-hover);
-    --button-text: var(--text-on-accent);
-    --button-edge: var(--accent-edge);
-  }
-  :is(button, .chip):active:not(:disabled) { transform: translate(2px, 3px); }
-  button:disabled { opacity: .6; cursor: default; }
-  li button { align-self: center; flex-shrink: 0; }
-  .empty { padding: 24px; text-align: center; color: var(--muted); }
-  li.separator { padding: 4px 10px; color: var(--muted); font-size: 12px; font-weight: 600; background: var(--band); cursor: default; }
-  #assignedLimit { padding: 4px 10px; border-bottom: 1px solid var(--line); }
-  .assigned-item-link, .related-mr-link { text-decoration: none; }
-  .assigned-item-link { color: inherit; display: block; }
-  .assigned-item-link:hover .title, .related-mr-link:hover { text-decoration: underline; }
-  .related-mr-badges { display: flex; flex-wrap: wrap; gap: 2px 12px; margin-top: 3px; }
-  /* 行の末尾の枠（期限）。本文が省略されても、期限は右端で必ず読める */
-  li > .trail { flex-shrink: 0; text-align: right; font-size: 12px; white-space: nowrap; padding-top: 1px; }
-  li > .trail:empty { display: none; }
-  #mrSyncError { margin: 0; padding: 5px 10px; border-bottom: 1px solid var(--line); }
-  .bar { display: flex; flex-wrap: wrap; gap: 8px; padding: 6px 10px 8px; border-bottom: 1px solid var(--line); }
-  .bar:empty { display: none; }
-  /* 選択中の絞り込みに操作色を使う。 */
-  .chip {
-    max-width: 100%; padding: 2px 7px 3px 9px; background: var(--control-bg); box-shadow: 3px 3px 0 var(--shadow);
-    color: var(--control-fg); font: 600 12px "Segoe UI", "Yu Gothic UI", sans-serif;
-    letter-spacing: normal; overflow-wrap: anywhere; cursor: pointer;
-  }
-  .chip.active {
-    position: relative; isolation: isolate;
-    background: transparent; color: var(--button-text); box-shadow: none;
-  }
-  .chip:not(.active):hover { background: var(--control-edge); }
-  .chip-count {
-    display: inline-block; min-width: 2ch; padding: 0 3px; border: 1px solid #a0a0a0; border-radius: 999px;
-    color: var(--control-fg);
-    font: italic 800 11px/14px var(--mono-font); font-variant-numeric: tabular-nums; text-align: center;
-  }
-  .chip.active .chip-count {
-    color: #000000; background: #dedede; border-color: #000000;
-  }
-  .due.over {
-    color: #000000; background: var(--accent-danger);
-  }
-  .warning-count {
-    position: relative; display: inline-block; flex: none; width: 16px; height: 16px;
-    filter: drop-shadow(2px 2px 0 var(--shadow));
-  }
-  .chip .warning-count { margin-inline-start: 5px; vertical-align: bottom; }
-  .warning-count::before {
-    content: '!'; position: absolute; inset: 0; border-radius: 3px;
-    clip-path: polygon(0 0, 12px 0, 100% 4px, 100% 100%, 4px 100%, 0 12px);
-    color: var(--text); background: var(--charcoal); text-align: center; font: 900 13px/16px "Segoe UI", sans-serif;
-  }
-  .warning-count::after {
-    content: ''; position: absolute; top: -1px; left: -2px; width: 7px; height: 7px;
-    background: var(--accent-danger); clip-path: polygon(50% 0, 100% 50%, 50% 100%, 0 50%);
-  }
-  /* 期限: 通常は控えめ、間近は黄系、超過は赤＋太字。 */
-  .due { color: var(--muted); font-variant-numeric: tabular-nums; font-weight: 600; }
-  .due.soon, .due.over {
-    display: inline-block; padding: 1px 5px; border-radius: 3px;
-  }
-  .due.soon {
-    color: var(--soon); font-weight: 600;
-    background: color-mix(in srgb, currentColor 10%, transparent);
-  }
-  .due.over { font-weight: 700; }
-  form { display: grid; gap: 12px; padding: 12px; }
-  form label { display: grid; gap: 5px; font-weight: 600; }
-  form label.check { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
-  form label.check span { flex: 1 1 auto; }
-  form label.check:has(input) span { flex-basis: 0; font-weight: 400; }
-  form :is(input[type=text], input[type=password], input[type=number], select) {
-    min-width: 0; max-width: 100%; padding: 6px 8px; border: 1px solid var(--muted);
-    background: var(--field); color: var(--text); font: inherit; font-weight: 400;
-  }
-  form input[type=number] { width: 9rem; }
-  form select { cursor: pointer; }
-  form input[type=checkbox] { width: 16px; height: 16px; margin: 0; accent-color: var(--accent-primary); cursor: pointer; }
-  input::placeholder { color: var(--muted); }
-  .hint { color: var(--muted); font-size: 12px; }
-  form p.hint { margin: 0; }
-  .hidden { display: none !important; }
-  @media (prefers-reduced-motion: reduce) {
-    :is(button, .chip) { transition: none; }
-    :is(button, .chip):is(:hover, :active):not(:disabled) { transform: none; }
-  }
-</style>
+<link rel="stylesheet" href="ui.css">
 </head>
 <body>
 <div class="window-titlebar">
@@ -273,13 +13,13 @@
     <span class="window-label"><span aria-hidden="true">/// </span>NMS</span>
     <span class="window-label" id="build-version"></span>
   </div>
-  <button type="button" id="win-minimize" aria-label="最小化" data-i18n-label="winMinimize">_</button>
-  <button type="button" id="win-close" aria-label="閉じる" data-i18n-label="winClose">×</button>
+  <button type="button" id="win-minimize" aria-label="最小化" title="最小化" data-i18n-label="winMinimize">_</button>
+  <button type="button" id="win-close" aria-label="閉じる" title="閉じる" data-i18n-label="winClose">×</button>
 </div>
 <header>
   <button type="button" class="tab active" data-view="list" data-i18n="tabList">Activity</button>
   <button type="button" class="tab" data-view="assigned" id="assignedTab">Items</button>
-  <button type="button" class="tab" data-view="settings" data-i18n="tabSettings" aria-label="設定" title="設定">
+  <button type="button" class="tab" data-view="settings" data-i18n="tabSettings" data-i18n-icon aria-label="設定" title="設定">
     <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none"
          stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
       <circle cx="12" cy="12" r="3.2"/>
@@ -288,14 +28,14 @@
   </button>
   <span class="spacer"></span>
   <span id="status"></span>
-  <button type="button" id="refresh" data-i18n="refresh" aria-label="更新" title="更新">
+  <button type="button" id="refresh" data-i18n="refresh" data-i18n-icon aria-label="更新" title="更新">
     <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none"
          stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
       <path d="M20 4v6h-6m6 0a8 8 0 1 0 .1 4"/>
     </svg>
   </button>
 </header>
-<div id="error"></div>
+<div id="error" class="hidden"></div>
 
 <section id="list">
   <div class="bar repos" id="todoRepos"></div>
@@ -340,3 +80,4 @@
 <script src="renderer.js"></script>
 </body>
 </html>
+

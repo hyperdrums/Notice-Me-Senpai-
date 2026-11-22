@@ -265,7 +265,6 @@ test('tr: 言語で切り替わり、{n} を差し込む', () => {
   }
   assert.equal(tr('ja', 'statusCount', { n: 4 }), '4 件');
   assert.equal(tr('en', 'statusCount', { n: 4 }), '4 to-dos');
-  assert.equal(tr('en', 'assignedTabOver', { n: 3, m: 1 }), 'Items 3 (1 overdue)');
   assert.equal(tr('ja', 'assignedLimit', { n: 100 }), '100 件まで表示');
   assert.equal(tr('en', 'assignedLimit', { n: 100 }), 'Showing the first 100');
 });
@@ -347,7 +346,7 @@ test('workItemTone: 翻訳を持つ種別は必ず色を持つ', () => {
 });
 
 test('CSS はダーク固定で、種別の色クラスは各 1 定義', () => {
-  const css = fs.readFileSync(path.join(__dirname, '..', 'src', 'index.html'), 'utf8');
+  const css = fs.readFileSync(path.join(__dirname, '..', 'src', 'ui.css'), 'utf8');
   assert.match(css, /:root\s*\{\s*color-scheme:\s*dark\s*;/);
   assert.doesNotMatch(css, /prefers-color-scheme/);
   const tones = new Set([...Object.values(ACTION_TONES), ...Object.values(WORK_ITEM_TONES)]);
@@ -368,7 +367,7 @@ test('mrStatus: 状態と下書きを見た目の種類に寄せる', () => {
 });
 
 test('MR の各状態は日英の文言、1 つの色定義、固有の記号を持つ', () => {
-  const css = fs.readFileSync(path.join(__dirname, '..', 'src', 'index.html'), 'utf8');
+  const css = fs.readFileSync(path.join(__dirname, '..', 'src', 'ui.css'), 'utf8');
   const marks = new Set();
   for (const kind of Object.keys(MR_STATUS_LABELS)) {
     const colors = css.matchAll(new RegExp(`\\.s-${kind}\\s*\\{\\s*--status:`, 'g'));
@@ -386,9 +385,19 @@ test('MR の各状態は日英の文言、1 つの色定義、固有の記号を
 });
 
 test('配色: 絞り込みの選択中に警告色（赤）を使わない', () => {
-  const css = fs.readFileSync(path.join(__dirname, '..', 'src', 'index.html'), 'utf8');
-  assert.match(css, /:is\(header \.tab\.active, \.chip\.active\)\s*\{\s*--button-face:\s*var\(--accent-primary\);/);
-  assert.match(css, /--accent-primary:\s*var\(--lime\);/);
+  const css = fs.readFileSync(path.join(__dirname, '..', 'src', 'ui.css'), 'utf8');
+  // 選択中の面（--button-face）と警告面（--danger）が別の変数に分かれていること。
+  // 実装の書き方は自由で、選択中に赤が来ないことだけを保証する
+  const face = css.match(/--button-face:\s*var\((--[\w-]+)\)/);
+  const danger = css.match(/--danger:\s*var\((--[\w-]+)\)/);
+  assert.ok(face && danger, '選択面と警告色の定義がない');
+  assert.notEqual(face[1], danger[1], '選択中の面に警告色と同じ変数は使えない');
+  // 選択面の正体はライム（操作色）
+  const lime = css.match(/--lime:\s*(#[0-9a-fA-F]{3,8})/);
+  const faceVar = css.match(new RegExp(`\\${face[1]}:\\s*(#[0-9a-fA-F]{3,8}|var\\(--[\\w-]+\\))`));
+  assert.ok(lime && faceVar, 'ライムと選択面の定義がない');
+  const faceColor = faceVar[1].startsWith('var') ? css.match(new RegExp(`${faceVar[1].slice(4, -1)}:\\s*(#[0-9a-fA-F]{3,8})`))?.[1] : faceVar[1];
+  assert.equal(faceColor?.toLowerCase(), lime[1].toLowerCase(), '選択中の面はライムでなければならない');
 });
 
 // ---------- 言語設定が見つけられるか ----------

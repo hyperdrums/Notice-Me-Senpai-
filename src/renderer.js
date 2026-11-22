@@ -22,7 +22,7 @@ function applyI18n() {
   document.title = tr(lang, 'appTitle');
   for (const e of document.querySelectorAll('[data-i18n]')) {
     const label = tr(lang, e.dataset.i18n);
-    if (e.id === 'refresh' || e.dataset.view === 'settings') {
+    if (e.hasAttribute('data-i18n-icon')) {
       // アイコンのみのボタンは文言を aria-label / title に入れる（SVG を消さない）
       e.setAttribute('aria-label', label);
       e.title = label;
@@ -30,7 +30,12 @@ function applyI18n() {
       e.textContent = label;
     }
   }
-  for (const e of document.querySelectorAll('[data-i18n-label]')) e.setAttribute('aria-label', tr(lang, e.dataset.i18nLabel));
+  // ラベル専用（aria-label と title を翻訳で埋める）
+  for (const e of document.querySelectorAll('[data-i18n-label]')) {
+    const label = tr(lang, e.dataset.i18nLabel);
+    e.setAttribute('aria-label', label);
+    e.title = label;
+  }
 }
 
 // ---------- 共通 ----------
@@ -238,7 +243,7 @@ function renderAssigned(items, limited, error, relatedMrsByIssue = {}) {
 function render(s) {
   current = s;
   const message = [s.error, s.assignedError].filter(Boolean).join(' / ');
-  $('#error').style.display = message ? 'block' : 'none';
+  $('#error').classList.toggle('hidden', !message);
   $('#error').textContent = message;
   const status = $('#status');
   status.textContent = s.loading ? tr(lang, 'loading') : '';
