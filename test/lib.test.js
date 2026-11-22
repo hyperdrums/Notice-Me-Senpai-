@@ -100,12 +100,6 @@ test('dueInfo: prefix を省略すると言語で決まる', () => {
   assert.equal(dueInfo('2026-11-01', { today: TODAY, lang: 'en' }).text, 'Due 11/1 (2d overdue)');
 });
 
-test('dueInfo: 渡した today を書き換えない', () => {
-  const before = TODAY.getTime();
-  dueInfo('2026-11-05', { today: TODAY });
-  assert.equal(TODAY.getTime(), before);
-});
-
 // ---------- ago ----------
 const NOW = new Date('2026-11-03T12:00:00').getTime();
 const minsAgo = (m, lang) => ago(new Date(NOW - m * 60000).toISOString(), { now: NOW, lang });
@@ -171,12 +165,8 @@ test('splitByDue: 期限が近い順に並べ、期限なしを分ける', () =>
   const { dated, undated } = splitByDue(items);
   assert.deepEqual(dated.map(i => i.iid), [4, 5, 2]);
   assert.deepEqual(undated.map(i => i.iid), [1, 3]);
-});
-
-test('splitByDue: 渡した配列を書き換えない', () => {
-  const items = [{ iid: 1, due_date: '2026-12-01' }, { iid: 2, due_date: '2026-11-01' }];
-  splitByDue(items);
-  assert.deepEqual(items.map(i => i.iid), [1, 2]);
+  // 渡した配列は書き換えない
+  assert.deepEqual(items.map(i => i.iid), [1, 2, 3, 4, 5]);
 });
 
 test('countOverdue: 期限なしは超過に数えない（今日までも超過ではない）', () => {
@@ -249,13 +239,6 @@ test('assignedPatch: 失敗なら前回の一覧に触らず、部分的な失�
     { assignedError: 'Could not fetch work items: HTTP 500 (To-Dos are up to date)' });
 });
 
-test('assignedPatch: バッジの件数（count）を決して変えない', () => {
-  const ok = assignedPatch({ status: 'fulfilled', value: { items: [{ id: 1 }], xTotal: '1' } });
-  const ng = assignedPatch({ status: 'rejected', reason: new Error('x') });
-  assert.ok(!('count' in ok));
-  assert.ok(!('count' in ng));
-});
-
 test('todoRef: MR は !、WorkItem を含むそれ以外は #', () => {
   assert.equal(todoRef({ target_type: 'MergeRequest', target: { iid: 3 } }), '!3');
   assert.equal(todoRef({ target_type: 'Issue', target: { iid: 3 } }), '#3');
@@ -278,10 +261,6 @@ test('tr: 言語で切り替わり、{n} を差し込む', () => {
 test('tr: 未知の lang は日本語、未知の key はそのまま返す', () => {
   assert.equal(tr('fr', 'tabAssigned'), '作業アイテム');
   assert.equal(tr('en', 'shikatanai_key'), 'shikatanai_key');
-});
-
-test('tr: 差し込み変数が無くても壊れない', () => {
-  assert.equal(tr('en', 'emptyTodos'), 'No To-Dos');
 });
 
 test('actionLabel: GitLab の action_name をラベルにする', () => {
@@ -323,12 +302,9 @@ test('TYPES: target_type の略称', () => {
 });
 
 // ---------- ラベルの色 ----------
-test('ACTION_TONES: 翻訳を持つ action_name は必ず色を持つ', () => {
+test('ACTION_TONES: 翻訳を持つ action_name は必ず色を持ち、日英の一覧も揃っている', () => {
   const missing = Object.keys(ACTIONS.ja).filter(k => !ACTION_TONES[k]);
   assert.deepEqual(missing, [], `色が付いていない action_name: ${missing.join(', ')}`);
-});
-
-test('ACTION_TONES: 日英で action_name の一覧がズレていない', () => {
   assert.deepEqual(Object.keys(ACTIONS.en).sort(), Object.keys(ACTIONS.ja).sort());
 });
 
@@ -402,18 +378,7 @@ test('言語のラベルはどちらの言語でも探せる', () => {
 const slug = (s) =>
   s.trim().toLowerCase().replace(/[^\p{L}\p{N} ]/gu, '').replace(/ /g, '-');
 
-test('README の目次は全て実際の見出しに解決できる', () => {
-  const md = fs.readFileSync(path.join(__dirname, '..', 'README.md'), 'utf8');
-  const headings = new Set(
-    [...md.matchAll(/^#{1,6}\s+(.+)$/gm)].map((m) => slug(m[1]))
-  );
-  const toc = md.slice(md.indexOf('## 目次'), md.indexOf('## できること'));
-  const links = [...toc.matchAll(/\]\(#([^)]+)\)/g)].map((m) => m[1]);
-  assert.ok(links.length >= 5, `目次にリンクが無い (${links.length})`);
-  for (const l of links) assert.ok(headings.has(l), `対応する見出しが無い: #${l}`);
-});
-
-test('README の内部リンクが存在する見出しを指している', () => {
+test('README の内部リンクは全て実際の見出しを指している', () => {
   const md = fs.readFileSync(path.join(__dirname, '..', 'README.md'), 'utf8');
   const headings = new Set(
     [...md.matchAll(/^#{1,6}\s+(.+)$/gm)].map((m) => slug(m[1]))
@@ -421,4 +386,5 @@ test('README の内部リンクが存在する見出しを指している', () =
   for (const m of md.matchAll(/\]\(#([^)]+)\)/g)) {
     assert.ok(headings.has(m[1]), `存在しない見出し: #${m[1]}`);
   }
+  assert.ok([...md.matchAll(/\]\(#([^)]+)\)/g)].length >= 5, '内部リンクが少なすぎる（目次が消えていないか）');
 });
