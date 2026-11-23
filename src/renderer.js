@@ -10,12 +10,31 @@ const filter = { action: 'all', todoRepo: 'all', assignedRepo: 'all', assignedTy
 
 // ---------- タブ ----------
 const VIEWS = ['list', 'assigned', 'settings'];
-document.querySelectorAll('.tab').forEach(tab => {
+const tabTrack = $('.tab-track');
+const tabIndicator = tabTrack.querySelector('.tab-indicator');
+const tabs = tabTrack.querySelectorAll('.tab');
+function positionTabIndicator() {
+  const active = tabTrack.querySelector('.tab.active');
+  tabIndicator.style.transform = `translateX(${active.offsetLeft}px)`;
+  tabIndicator.style.width = `${active.offsetWidth}px`;
+}
+
+tabs.forEach(tab => {
   tab.onclick = () => {
-    document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t === tab));
+    tabs.forEach(t => t.classList.toggle('active', t === tab));
     for (const v of VIEWS) $(`#${v}`).classList.toggle('hidden', tab.dataset.view !== v);
+    positionTabIndicator();
     scheduleChipConnectors();
   };
+});
+
+let tabResizeFrame = null;
+window.addEventListener('resize', () => {
+  if (tabResizeFrame !== null) return;
+  tabResizeFrame = requestAnimationFrame(() => {
+    tabResizeFrame = null;
+    positionTabIndicator();
+  });
 });
 
 // ---------- チップの接続線 ----------
@@ -416,7 +435,11 @@ async function loadForm() {
   const next = LANGS.includes(c.lang) ? c.lang : 'ja';
   const changed = next !== lang;
   lang = next;
-  if (changed) { applyI18n(); render(current); }   // 言語が変わったら画面を作り直す
+  if (changed) {
+    applyI18n();
+    render(current);
+    positionTabIndicator();
+  }
   const f = $('#form');
   f.baseUrl.value = c.baseUrl;
   f.intervalSec.value = c.intervalSec;
@@ -466,4 +489,5 @@ window.api.getVersion().then(version => { $('#build-version').textContent = `BUI
 window.api.onState(render);
 window.api.getState().then(render);
 applyI18n();
+positionTabIndicator();
 loadForm();

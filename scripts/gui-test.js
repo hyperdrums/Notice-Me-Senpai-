@@ -114,6 +114,21 @@ async function waitUntil(label, fn, timeout = 20000) {
 }
 const count = where => evl(`document.querySelectorAll(${JSON.stringify(where)}).length`);
 
+async function checkTabIndicator(label, view) {
+  const matches = `(() => {
+    const active = document.querySelector('.tab-track > .tab.active');
+    const indicators = document.querySelectorAll('.tab-track > .tab-indicator');
+    const [indicator] = indicators;
+    if (active?.dataset.view !== ${JSON.stringify(view)} || indicators.length !== 1
+        || indicator.getAttribute('aria-hidden') !== 'true') return false;
+    const tab = active.getBoundingClientRect();
+    const pill = indicator.getBoundingClientRect();
+    return !indicator.getAnimations().length && tab.width > 0
+      && Math.abs(pill.x - tab.x) <= 0.5 && Math.abs(pill.width - tab.width) <= 0.5;
+  })()`;
+  check(label, await waitFor(label, matches, 5000));
+}
+
 async function checkChipConnector(label, view, repos, types) {
   const matches = `(() => {
     const svg = document.querySelector('#${view} > svg.chip-connector[aria-hidden="true"]');
@@ -285,6 +300,7 @@ async function checkConfigMessage(key, settingsKey = key) {
   // 3) モックのデータが描画される
   await waitFor('To-Do 一覧 4 件', `document.querySelectorAll('#todos li').length === 4`);
   check('To-Do タブに 4 件描画', (await count('#todos li')) === 4);
+  await checkTabIndicator('起動時にインジケーターが Activity に合う', 'list');
   await checkChipConnector('Activity の接続線がアクティブなチップに合う', 'list', 'todoRepos', 'actions');
 
   const activityPaths = `document.querySelectorAll('#list > .chip-connector > path')`;
@@ -440,6 +456,7 @@ async function checkConfigMessage(key, settingsKey = key) {
     JSON.stringify(q));
   await checkAssignedWarning('Items と警告バッジを表示し、超過数は読み上げとツールチップで伝える', '期限超過 1 件');
   await click('.tab[data-view=assigned]');
+  await checkTabIndicator('タブ切替でインジケーターが Items に移動する', 'assigned');
   await waitFor('作業アイテム一覧 7 件', `document.querySelectorAll(${JSON.stringify(ROWS)}).length === 7`);
   await checkChipConnector('Items の接続線がアクティブなチップに合う', 'assigned', 'assignedRepos', 'assignedTypes');
   check('タブ切替で非表示の Activity のパスを空にする', (await count('#list .chip-connector path')) === 0);
@@ -866,8 +883,13 @@ async function checkConfigMessage(key, settingsKey = key) {
       out.refreshIcon && out.refreshText === '' && out.refreshLabel === refreshLabel && out.refreshTitle === refreshLabel);
   };
   await checkFixedLabels('ja', '更新', 'Settings');
+  // 日英で同じ Activity 表記を使うため、翻訳で幅が変わる状況を作る。
+  await evl(`document.querySelector('.tab[data-view=list]').textContent = 'Recent Activity';`);
+  await click('.tab[data-view=settings]');
+  await checkTabIndicator('長いラベルでもインジケーターが Settings に合う', 'settings');
   await evl(`${sel}.value = 'en'; document.querySelector('#form').requestSubmit();`);
   await waitFor('英語に切り替わる', `document.documentElement.lang === 'en'`, 20000);
+  await checkTabIndicator('言語切替でラベルの幅が戻ってもインジケーターが Settings に合う', 'settings');
   await checkFixedLabels('en', 'Refresh', 'Settings');
   const tagsEn = await evl(`[...document.querySelectorAll('#todos .tag')].map(e => e.textContent).join(',')`);
   check('種別ラベルが英語', /Mentioned/.test(tagsEn) && /Assigned/.test(tagsEn) && !/メンション/.test(tagsEn), tagsEn);
@@ -900,19 +922,25 @@ async function checkConfigMessage(key, settingsKey = key) {
   const headerProblems = `(() => {
     const header = document.querySelector('header');
     const bounds = header.getBoundingClientRect();
-    return [...header.children].flatMap(element => {
-      if (element.matches('.spacer:empty')) return [];
-      if (!element.matches('.tab, #status, #refresh')) return [element.tagName];
+    const track = header.querySelector('.tab-track');
+    const trackRect = track.getBoundingClientRect();
+    const tabs = [...track.querySelectorAll('.tab')];
+    return [track, ...tabs, header.querySelector('#status'), header.querySelector('#refresh')].flatMap(element => {
       const rect = element.getBoundingClientRect();
       const outside = rect.width === 0 || rect.left < bounds.left || rect.right > bounds.right;
-      const clippedTab = element.matches('.tab') && element.scrollWidth > element.clientWidth;
+      const clippedTab = element.matches('.tab') && (rect.left < trackRect.left || rect.right > trackRect.right
+        || rect.top !== tabs[0].getBoundingClientRect().top || rect.bottom > trackRect.bottom
+        || element.scrollWidth > element.clientWidth);
+      const badTrack = element === track && tabs.length !== 3;
       const icon = element.querySelector('svg')?.getBoundingClientRect();
-      const clippedIcon = element.id === 'refresh' && (!icon || icon.width === 0 ||
+      const hasIcon = element.matches('#refresh, .tab[data-view=settings]');
+      const clippedIcon = hasIcon && (!icon || icon.width === 0 ||
         icon.left < rect.left || icon.right > rect.right || icon.top < rect.top || icon.bottom > rect.bottom);
       const badge = element.querySelector('.warning-count')?.getBoundingClientRect();
       // 警告バッジはタブ/チップの左上角に意図的にはみ出して配置するため、サイズだけを検証する
       const clippedBadge = badge && (badge.width < 10 || badge.width > 14);
-      return outside || clippedTab || clippedIcon || clippedBadge ? [element.id || element.textContent] : [];
+      return outside || clippedTab || clippedIcon || clippedBadge || badTrack
+        ? [element.id || element.dataset.view || element.className] : [];
     });
   })()`;
   const normalWithWarning = await evl(headerProblems);
@@ -923,6 +951,7 @@ async function checkConfigMessage(key, settingsKey = key) {
   await shot('items-with-warning.png', PHASE12_OUT);
   await cdp.send('Emulation.setDeviceMetricsOverride', { width: 320, height: 640, deviceScaleFactor: 1, mobile: false });
   const narrowWidth = await evl('window.innerWidth');
+  await checkTabIndicator('320px へのリサイズ後もインジケーターが Items に合う', 'assigned');
   const narrowWithWarning = await evl(headerProblems);
   const narrowTitlebar = await evl(titlebarState);
   const narrowWarnings = await chipWarnings();

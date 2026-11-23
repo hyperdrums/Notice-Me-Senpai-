@@ -45,7 +45,7 @@ body { margin: 0; background: var(--bg); font: 13px "Segoe UI", "Yu Gothic UI", 
 .cut, body > section { --corner-size: 13px; }
 .cut-sm, button, .chip.active, li:not(.empty, .separator) { --corner-size: 9px; }
 .cut, .cut-sm, body > section::before, button:not(.tab, .chip)::before,
-header .tab:is(.active, :hover, :active)::before, .chip.active::before, .related-mr-link::after,
+.chip.active::before, .related-mr-link::after,
 li:not(.empty, .separator)::before {
   clip-path: polygon(0 0, calc(100% - var(--corner-size)) 0, 100% var(--corner-size),
                      100% 100%, var(--corner-size) 100%, 0 calc(100% - var(--corner-size)));
@@ -68,36 +68,42 @@ li:not(.empty, .separator)::before {
 }
 #build-version { color: var(--muted); overflow: hidden; text-overflow: ellipsis; }
 header {
-  display: grid; grid-template-columns: repeat(3, max-content) minmax(0, 1fr) minmax(0, max-content) max-content;
+  display: grid; grid-template-columns: max-content minmax(0, 1fr) minmax(0, max-content) max-content;
   gap: 9px 8px; align-items: center; padding: 7px 10px 9px;
   border-bottom: 1px solid var(--line);
 }
+.tab-track {
+  position: relative; isolation: isolate;
+  display: flex; padding: 2px; border-radius: 999px;
+  background: var(--bg-secondary); border: 1px solid var(--line);
+}
+.tab-indicator {
+  position: absolute; top: 2px; left: 0; z-index: -1;
+  height: 26px; border-radius: 999px; background: var(--lime); pointer-events: none;
+  transition: transform .15s ease-out, width .15s ease-out;
+}
 header .tab {
-  display: inline-flex; align-items: center; justify-content: center; gap: 5px;
-  min-width: 0; padding: 5px 9px 7px; white-space: nowrap;
-  background: var(--control-bg); box-shadow: 3px 3px 0 var(--shadow);
+  display: inline-flex; align-items: center; justify-content: center;
+  height: 26px; padding-inline: 9px; white-space: nowrap; border-radius: 999px;
+  color: var(--muted);
   line-height: 18px; font-variant-numeric: tabular-nums;
 }
-header .tab:is(.active, :hover, :active) {
-  background: transparent; box-shadow: none;
-  --cut-shadow: var(--cut);
-}
+header .tab:hover { color: var(--text); }
+header .tab.active { color: var(--text-on-accent); }
+header .tab:focus-visible { z-index: 1; }
 #status {
   color: var(--muted); font: 600 12px var(--mono-font); font-variant-numeric: tabular-nums;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; text-align: right;
 }
 #status .status-count { color: var(--text); }
 #refresh svg { display: block; }
-header .tab[data-view="settings"] { display: inline-flex; align-items: center; justify-content: center; }
 header .tab[data-view="settings"] svg { display: block; }
 @media (max-width: 400px) {
-  header { grid-template-columns: max-content minmax(0, 1fr) max-content; column-gap: 6px; }
-  header .tab {
-    justify-self: start; max-width: 100%; padding-inline: 5px; font-size: 12px;
-    white-space: normal; overflow-wrap: anywhere;
-  }
+  header { grid-template-columns: minmax(0, 1fr) max-content; column-gap: 6px; }
+  .tab-track { grid-column: 1 / -1; justify-self: start; }
+  header .tab { padding-inline: 7px; font-size: 12px; }
   header .spacer { display: none; }
-  #status { grid-column: 1 / 3; text-align: left; }
+  #status { text-align: left; }
   #refresh { justify-self: end; }
 }
 body > section {
@@ -166,13 +172,13 @@ button:not(.tab, .chip) {
   font: 800 18px/24px var(--mono-font);
   -webkit-app-region: no-drag;
 }
-:is(button:not(.tab, .chip), header .tab:is(.active, :hover, :active), .chip.active)::before {
+:is(button:not(.tab, .chip), .chip.active)::before {
   content: ''; position: absolute; inset: 0; pointer-events: none;
   z-index: -1; background: var(--button-face, var(--control-bg));
   border-bottom: 3px solid var(--button-edge, var(--control-edge));
   border-right: 3px solid var(--button-edge, var(--control-edge));
 }
-:is(header .tab.active, .chip.active) {
+.chip.active {
   --button-face: var(--accent-primary);
   --button-text: var(--text-on-accent);
   --button-edge: var(--accent-edge);
@@ -182,12 +188,12 @@ button:not(.tab, .chip) {
 :is(button, form input, form select, .assigned-item-link, .related-mr-link):focus-visible {
   outline: 3px solid var(--focus-ring); outline-offset: 2px;
 }
-:is(button, .chip) {
+:is(button, .chip):where(:not(.tab)) {
   filter: var(--cut-shadow, none);
   transition: transform .12s, filter .12s;
 }
-:is(button, .chip):hover:not(:disabled) { transform: translateY(-2px); }
-button:is(:hover, :active):not(:disabled, .chip) {
+:is(button, .chip):hover:not(:disabled):where(:not(.tab)) { transform: translateY(-2px); }
+button:is(:hover, :active):not(:disabled, .chip, .tab) {
   --button-face: var(--accent-hover);
   --button-text: var(--text-on-accent);
   --button-edge: var(--accent-edge);
@@ -196,7 +202,7 @@ button:is(:hover, :active):not(:disabled, .chip) {
   --button-face: var(--accent-danger);
   --button-edge: color-mix(in srgb, var(--accent-danger) 70%, black);
 }
-:is(button, .chip):active:not(:disabled) { transform: translate(2px, 3px); }
+:is(button, .chip):active:not(:disabled):where(:not(.tab)) { transform: translate(2px, 3px); }
 button:disabled { opacity: .6; cursor: default; }
 li button { align-self: center; flex-shrink: 0; }
 li .done-button {
@@ -312,7 +318,7 @@ form p.hint { margin: 0; }
 .hidden { display: none !important; }
 @media (prefers-reduced-motion: reduce) {
   .chip-connector path { animation: none; }
-  :is(button, .chip, .related-mr-link), .related-mr-link::after,
+  .tab-indicator, :is(button, .chip, .related-mr-link), .related-mr-link::after,
   li:not(.empty, .separator), li:not(.empty, .separator)::after { transition: none; }
   :is(button, .chip):is(:hover, :active):not(:disabled), .related-mr-link:is(:hover, :active),
   li:not(.empty, .separator):is(:hover, :focus-within, :active) { transform: none; }
