@@ -296,7 +296,8 @@ function renderTodos(todos, error) {
   const inRepo = todos.filter(t => filter.todoRepo === 'all' || todoRepo(t, lang) === filter.todoRepo);
   const actionOf = t => actionLabel(lang, t.action_name);
   renderChips($('#actions'), 'action', countBy(inRepo, actionOf));
-  const shown = inRepo.filter(t => filter.action === 'all' || actionOf(t) === filter.action);
+  const shown = inRepo.filter(t => filter.action === 'all' || actionOf(t) === filter.action)
+    .sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at) || b.id - a.id);
 
   const ul = todoConnector.list;
   todoConnector.hoveredRow = null;

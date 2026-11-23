@@ -86,7 +86,7 @@ function initialTodos(base) {
       target: { iid: 21, title: 'リリース手順の整理', due_date: null, milestone: { due_date: day(2) } },
       project: { id: 2, name_with_namespace: 'Other / Proj B', path_with_namespace: 'other/proj-b' },
       target_url: `${base}/other/proj-b/-/issues/21`,
-      created_at: iso(30),
+      created_at: iso(1560),
     }),
   ];
 }
@@ -213,19 +213,24 @@ async function start({ port = 0, quiet = false } = {}) {
     // ---- GitLab API のふり ----
     if (req.headers['private-token'] !== TOKEN) return send(401, { message: '401 Unauthorized' });
 
-    // 304 では x-total を再送しない。総数だけが変わって一覧の ETag が同じ場合も再現する。
+    // 304 では通常 x-total を省く。To-Do はページ本文が同じまま総数が変わる場合もある。
     const sendList = (list, rows, headers) => {
       if (state.etagOff) return send(200, rows, headers);
       const body = JSON.stringify(rows);
       let entry = state.etags.get(req.url);
       if (entry?.body !== body) {
-        entry = { body, etag: `W/"${etagSeq++}"` };
+        entry = { body, etag: `W/"${etagSeq++}"`, total: headers['x-total'] };
         state.etags.set(req.url, entry);
       }
       if (req.headers['if-none-match'] === entry.etag) {
         state.conditionalHits++;
         state.conditionalHitsByList[list]++;
-        res.writeHead(304, { etag: entry.etag });
+        const responseHeaders = { etag: entry.etag };
+        if (list === 'todos' && entry.total !== headers['x-total']) {
+          responseHeaders['x-total'] = headers['x-total'];
+          responseHeaders['x-total-pages'] = headers['x-total-pages'];
+        }
+        res.writeHead(304, responseHeaders);
         return res.end();
       }
       return send(200, rows, { etag: entry.etag, ...headers });
@@ -235,7 +240,18 @@ async function start({ port = 0, quiet = false } = {}) {
     if (p === '/api/v4/issues' && state.fail.issues) return send(state.fail.issues, { message: 'mock failure' });
 
     if (p === '/api/v4/todos') {
-      return sendList('todos', state.todos, { 'x-total': String(state.todos.length) });
+      const page = Math.max(1, Number(url.searchParams.get('page')) || 1);
+      const perPage = Math.max(1, Number(url.searchParams.get('per_page')) || 20);
+      const requestedState = url.searchParams.get('state');
+      const rows = state.todos.filter(t => !requestedState || t.state === requestedState);
+      if (url.searchParams.get('order_by') === 'id') {
+        const direction = url.searchParams.get('sort') === 'asc' ? 1 : -1;
+        rows.sort((a, b) => direction * (a.id - b.id));
+      }
+      return sendList('todos', rows.slice((page - 1) * perPage, page * perPage), {
+        'x-total': String(rows.length),
+        'x-total-pages': String(Math.ceil(rows.length / perPage)),
+      });
     }
     if (p === '/api/v4/issues') {
       state.issuesQuery = Object.fromEntries(url.searchParams);
