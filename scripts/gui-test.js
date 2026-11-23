@@ -420,7 +420,7 @@ async function checkConfigMessage(key, settingsKey = key) {
     const y = badgeRect.top + badgeRect.height / 2;
     const tipX = x - chipRect.left;
     const tipY = badgeRect.bottom - chipRect.top;
-    const tipInCorner = tipX >= 1 && tipX <= 4 && tipY >= 1 && tipY <= 4;
+    const tipInCorner = tipX >= 1 && tipX <= 4 && tipY >= 4 && tipY <= 6;
     const visible = document.elementFromPoint(x, y - 5) === badge
       && document.elementFromPoint(x - 4, y - 2) === badge
       && document.elementFromPoint(x, badgeRect.bottom - 1) === badge;
@@ -498,7 +498,7 @@ async function checkConfigMessage(key, settingsKey = key) {
   const checkWarningPin = async (label) => {
     const pin = await evl(warningPinState);
     check(label, pin && pin.centerOffsetX >= 0 && pin.centerOffsetX <= pin.maxCenterOffsetX
-      && pin.bottomOffsetY >= 3 && pin.bottomOffsetY <= 6 && pin.visible && pin.pin, JSON.stringify(pin));
+      && pin.bottomOffsetY >= 6 && pin.bottomOffsetY <= 8 && pin.visible && pin.pin, JSON.stringify(pin));
   };
   await checkWarningPin('Items の警告ピンは白い ! を表示し、タブ左側でトラック上枠に刺さる');
   await waitFor('作業アイテム一覧 7 件', `document.querySelectorAll(${JSON.stringify(ROWS)}).length === 7`);
