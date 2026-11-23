@@ -16,7 +16,6 @@
   --text: #ffffff;
   --muted: #bdbdbd;
   --line: #4a4a4a;
-  --row-hover: var(--bg-elevated);
   --band: var(--bg-elevated);
   --field: var(--bg-elevated);
   --panel: var(--bg-secondary);
@@ -44,9 +43,10 @@
 body { margin: 0; background: var(--bg); font: 13px "Segoe UI", "Yu Gothic UI", sans-serif; color: var(--text); }
 /* 既存の要素に角切りを適用。操作要素は面だけを切り、外側のフォーカス枠を残す。 */
 .cut, body > section { --corner-size: 13px; }
-.cut-sm, button, .chip.active { --corner-size: 9px; }
+.cut-sm, button, .chip.active, li:not(.empty, .separator) { --corner-size: 9px; }
 .cut, .cut-sm, body > section::before, button:not(.tab, .chip)::before,
-header .tab:is(.active, :hover, :active)::before, .chip.active::before, .related-mr-link::after {
+header .tab:is(.active, :hover, :active)::before, .chip.active::before, .related-mr-link::after,
+li:not(.empty, .separator)::before {
   clip-path: polygon(0 0, calc(100% - var(--corner-size)) 0, 100% var(--corner-size),
                      100% 100%, var(--corner-size) 100%, 0 calc(100% - var(--corner-size)));
 }
@@ -126,16 +126,24 @@ body > section::after {
   background: var(--danger-wash); color: var(--danger-text); overflow-wrap: anywhere;
 }
 body:has(> #settings:not(.hidden) > #settingsMessage:not(.hidden)) > #error { display: none; }
-ul { list-style: none; margin: 0; padding: 0; }
+ul { list-style: none; margin: 0; display: flex; flex-direction: column; gap: 6px; padding: 6px; }
 li { display: flex; gap: 8px; padding: 8px 10px; border-bottom: 1px solid var(--line); cursor: pointer; }
-li:not(.empty, .separator) { transition: transform .12s; }
+li:not(.empty, .separator) {
+  position: relative; border-bottom: 0; filter: var(--cut); transition: transform .12s;
+}
+/* 角切りはプレート面に適用し、行内のフォーカス枠は面の外にも描けるようにする。 */
+li:not(.empty, .separator)::before {
+  content: ''; position: absolute; inset: 0; z-index: -1; pointer-events: none;
+  background: var(--bg-elevated);
+}
 li:not(.empty, .separator)::after {
   content: '▸' / ''; align-self: center; flex-shrink: 0; pointer-events: none;
   color: var(--lime); opacity: 0; transition: opacity .12s;
 }
 li:not(.empty, .separator):is(:hover, :focus-within) {
-  background: var(--row-hover); box-shadow: inset 4px 0 var(--lime); transform: translateX(2px);
+  transform: translateX(2px);
 }
+li:not(.empty, .separator):is(:hover, :focus-within)::before { box-shadow: inset 4px 0 var(--lime); }
 li:not(.empty, .separator):is(:hover, :focus-within)::after { opacity: 1; }
 li:not(.empty, .separator):active { transform: translateX(1px); }
 li .main { flex: 1; min-width: 0; }
