@@ -482,7 +482,7 @@ async function checkConfigMessage(key, settingsKey = key) {
   const checkWarningPin = async (label) => {
     const pin = await evl(warningPinState);
     check(label, pin && pin.centerOffsetX >= 0 && pin.centerOffsetX <= pin.maxCenterOffsetX
-      && pin.bottomOffsetY >= 0 && pin.bottomOffsetY <= 6 && pin.visible && pin.pin, JSON.stringify(pin));
+      && pin.bottomOffsetY >= 3 && pin.bottomOffsetY <= 6 && pin.visible && pin.pin, JSON.stringify(pin));
   };
   await checkWarningPin('Items の警告ピンは白い ! を表示し、タブ左側でトラック上枠に刺さる');
   await waitFor('作業アイテム一覧 7 件', `document.querySelectorAll(${JSON.stringify(ROWS)}).length === 7`);
