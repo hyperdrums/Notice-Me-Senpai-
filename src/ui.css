@@ -62,20 +62,16 @@ li:not(.empty, .separator)::before {
   gap: 10px; padding: 0 4px; -webkit-app-region: drag;
 }
 .window-brand {
-  display: flex; flex: none; align-items: center; gap: 5px;
-  color: var(--text); pointer-events: none;
+  flex: none; pointer-events: none;
 }
-.window-brand-tile {
-  background: var(--lime); fill: var(--text-on-accent);
-  clip-path: polygon(0 0, 100% 0, 100% calc(100% - 5px), calc(100% - 5px) 100%, 0 100%);
+.window-brand-img {
+  display: block; height: 18px; width: auto;
 }
 .window-label {
   pointer-events: none; white-space: nowrap;
   font: 700 11px/1.4 var(--mono-font); letter-spacing: .11em;
 }
-.window-brand .window-label { font-style: italic; font-weight: 800; }
 #build-version { color: var(--muted); overflow: hidden; text-overflow: ellipsis; }
-@media (max-width: 320px) { #build-version { display: none; } }
 header {
   display: grid; grid-template-columns: repeat(3, max-content) minmax(0, 1fr) minmax(0, max-content) max-content;
   gap: 9px 8px; align-items: center; padding: 7px 10px 9px;

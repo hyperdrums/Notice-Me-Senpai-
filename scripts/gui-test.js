@@ -341,26 +341,32 @@ async function checkConfigMessage(key, settingsKey = key) {
   })`);
   const titlebarState = `(() => {
     const drag = document.querySelector('.window-drag');
-    const tile = drag.querySelector('.window-brand svg.window-brand-tile');
-    const tileRect = tile?.getBoundingClientRect();
-    const [name, build] = drag.querySelectorAll('.window-label');
+    const banner = drag.querySelector('.window-brand img.window-brand-img');
+    const bannerRect = banner?.getBoundingClientRect();
+    const build = drag.querySelector('#build-version');
+    const buildRect = build.getBoundingClientRect();
     const rect = drag.getBoundingClientRect();
-    const [nameRect, buildRect] = [name, build].map(label => label.getBoundingClientRect());
+    const titlebarRect = drag.parentElement.getBoundingClientRect();
+    const [minimizeRect, closeRect] = ['#win-minimize', '#win-close'].map(selector =>
+      document.querySelector(selector).getBoundingClientRect());
     const style = node => getComputedStyle(node);
     return {
-      name: name.textContent, build: build.textContent, buildVisible: buildRect.width > 0,
-      tileVisible: tileRect?.width === 18 && tileRect.height === 18 && tile.getAttribute('aria-hidden') === 'true',
-      fits: nameRect.width > 0 && nameRect.left >= rect.left && nameRect.right <= rect.right
-        && (!buildRect.width || (buildRect.left > nameRect.right && buildRect.right <= rect.right))
-        && document.querySelector('#win-minimize').getBoundingClientRect().left > rect.right,
+      build: build.textContent, buildVisible: buildRect.width > 0 && build.scrollWidth <= build.clientWidth,
+      bannerVisible: bannerRect?.width === 54 && bannerRect.height === 18 && banner.naturalWidth > 0
+        && banner.checkVisibility({ visibilityProperty: true, opacityProperty: true })
+        && banner.getAttribute('aria-hidden') === 'true',
+      fits: !!bannerRect && bannerRect.left >= rect.left && bannerRect.right < buildRect.left
+        && buildRect.right <= rect.right && rect.right < minimizeRect.left
+        && minimizeRect.width > 0 && minimizeRect.right < closeRect.left
+        && closeRect.width > 0 && closeRect.right <= titlebarRect.right,
       drag: style(drag).getPropertyValue('-webkit-app-region'),
-      pointerEvents: [name, build].map(label => style(label).pointerEvents),
+      pointerEvents: [banner, build].map(node => node && style(node).pointerEvents),
     };
   })()`;
   await waitFor('ビルドバージョンを取得', `document.querySelector('#build-version').textContent.length > 0`);
   const normalTitlebar = await evl(titlebarState);
-  check('タイトルバーに NMS と package.json の BUILD を表示し、ドラッグできる',
-    normalTitlebar.name === 'NMS' && normalTitlebar.tileVisible && normalTitlebar.build === BUILD_LABEL && normalTitlebar.buildVisible
+  check('タイトルバーにバナー画像と package.json の BUILD を表示し、ドラッグできる',
+    normalTitlebar.bannerVisible && normalTitlebar.build === BUILD_LABEL && normalTitlebar.buildVisible
       && normalTitlebar.fits && normalTitlebar.drag === 'drag' && normalTitlebar.pointerEvents.every(value => value === 'none'),
     JSON.stringify(normalTitlebar));
   check('Activity の chip に Items の警告を混ぜない', (await count('#list .chip .warning-count')) === 0);
@@ -851,8 +857,8 @@ async function checkConfigMessage(key, settingsKey = key) {
   const narrowWithWarning = await evl(headerProblems);
   const narrowTitlebar = await evl(titlebarState);
   const narrowWarnings = await chipWarnings();
-  check('320px では NMS を残して BUILD を省略し、横にあふれない',
-    narrowWidth === 320 && narrowTitlebar.name === 'NMS' && narrowTitlebar.tileVisible && !narrowTitlebar.buildVisible && narrowTitlebar.fits
+  check('320px でもバナー画像、BUILD、最小化・閉じるボタンが収まる',
+    narrowWidth === 320 && narrowTitlebar.bannerVisible && narrowTitlebar.buildVisible && narrowTitlebar.fits
       && await evl('document.documentElement.scrollWidth === document.documentElement.clientWidth')
       && narrowWarnings.length === 4 && narrowWarnings.every(chip => chip.valid), JSON.stringify(narrowTitlebar));
   await shot('items-320.png', PHASE12_OUT);
