@@ -16,7 +16,6 @@
   --text: #ffffff;
   --muted: #bdbdbd;
   --line: #4a4a4a;
-  --row-hover: var(--bg-elevated);
   --band: var(--bg-elevated);
   --field: var(--bg-elevated);
   --panel: var(--bg-secondary);
@@ -44,9 +43,10 @@
 body { margin: 0; background: var(--bg); font: 13px "Segoe UI", "Yu Gothic UI", sans-serif; color: var(--text); }
 /* 既存の要素に角切りを適用。操作要素は面だけを切り、外側のフォーカス枠を残す。 */
 .cut, body > section { --corner-size: 13px; }
-.cut-sm, button, .chip.active { --corner-size: 9px; }
+.cut-sm, button, .chip.active, li:not(.empty, .separator) { --corner-size: 9px; }
 .cut, .cut-sm, body > section::before, button:not(.tab, .chip)::before,
-header .tab:is(.active, :hover, :active)::before, .chip.active::before {
+header .tab:is(.active, :hover, :active)::before, .chip.active::before, .related-mr-link::after,
+li:not(.empty, .separator)::before {
   clip-path: polygon(0 0, calc(100% - var(--corner-size)) 0, 100% var(--corner-size),
                      100% 100%, var(--corner-size) 100%, 0 calc(100% - var(--corner-size)));
 }
@@ -126,11 +126,26 @@ body > section::after {
   background: var(--danger-wash); color: var(--danger-text); overflow-wrap: anywhere;
 }
 body:has(> #settings:not(.hidden) > #settingsMessage:not(.hidden)) > #error { display: none; }
-ul { list-style: none; margin: 0; padding: 0; }
+ul { list-style: none; margin: 0; display: flex; flex-direction: column; gap: 6px; padding: 6px; }
 li { display: flex; gap: 8px; padding: 8px 10px; border-bottom: 1px solid var(--line); cursor: pointer; }
-li:not(.empty, .separator):is(:hover, :focus-within) {
-  background: var(--row-hover); box-shadow: inset 2px 0 var(--muted);
+li:not(.empty, .separator) {
+  position: relative; border-bottom: 0; filter: var(--cut); transition: transform .12s;
 }
+/* 角切りはプレート面に適用し、行内のフォーカス枠は面の外にも描けるようにする。 */
+li:not(.empty, .separator)::before {
+  content: ''; position: absolute; inset: 0; z-index: -1; pointer-events: none;
+  background: var(--bg-elevated);
+}
+li:not(.empty, .separator)::after {
+  content: '▸' / ''; align-self: center; flex-shrink: 0; pointer-events: none;
+  color: var(--lime); opacity: 0; transition: opacity .12s;
+}
+li:not(.empty, .separator):is(:hover, :focus-within) {
+  transform: translateX(2px);
+}
+li:not(.empty, .separator):is(:hover, :focus-within)::before { box-shadow: inset 4px 0 var(--lime); }
+li:not(.empty, .separator):is(:hover, :focus-within)::after { opacity: 1; }
+li:not(.empty, .separator):active { transform: translateX(1px); }
 li .main { flex: 1; min-width: 0; }
 li .title { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 li .meta, li .body { color: var(--muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -140,7 +155,7 @@ li .meta, li .body { color: var(--muted); font-size: 12px; overflow: hidden; tex
        border: 1px solid var(--line); }
 /* 対応が必要な種類（CI 失敗・インシデントなど）だけは塗りで強調する */
 .tag.t-danger { color: var(--danger-fg); background: var(--tone); border-color: var(--tone); }
-/* MR の状態: 枠も塗りもなし。色は先頭の記号だけに付け、文字は補足と同じ控えめな色 */
+/* MR の状態色は先頭の記号に使い、文字は補足と同じ控えめな色にする。 */
 .mr-status { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; line-height: 16px;
              color: var(--muted); white-space: nowrap; }
 .mr-status::before { color: var(--status); font-size: 11px; line-height: 1; }
@@ -198,8 +213,20 @@ li.separator { padding: 4px 10px; color: var(--muted); font-size: 12px; font-wei
 #assignedLimit { padding: 4px 10px; border-bottom: 1px solid var(--line); }
 .assigned-item-link, .related-mr-link { text-decoration: none; }
 .assigned-item-link { color: inherit; display: block; }
-.assigned-item-link:hover .title, .related-mr-link:hover { text-decoration: underline; }
-.related-mr-badges { display: flex; flex-wrap: wrap; gap: 2px 12px; margin-top: 3px; }
+.assigned-item-link:hover .title { box-shadow: inset 0 -2px 0 var(--lime); }
+.related-mr-badges { display: flex; flex-wrap: wrap; gap: 6px 12px; margin-top: 3px; }
+.related-mr-link {
+  position: relative; isolation: isolate; padding: 1px 8px 2px;
+  box-shadow: 3px 3px 0 var(--shadow); transition: transform .12s;
+}
+.related-mr-link::after {
+  content: ''; position: absolute; inset: 0; z-index: -1; pointer-events: none;
+  --corner-size: 4px;
+  background: var(--control-bg); transition: background-color .12s;
+}
+.related-mr-link:hover::after { background: var(--control-edge); }
+.related-mr-link:hover { transform: translateY(-2px); }
+.related-mr-link:active { transform: translate(2px, 3px); }
 /* 行の末尾の枠（期限）。本文が省略されても、期限は右端で必ず読める */
 li > .trail { flex-shrink: 0; text-align: right; font-size: 12px; white-space: nowrap; padding-top: 1px; }
 li > .trail:empty { display: none; }
@@ -263,6 +290,8 @@ input::placeholder { color: var(--muted); }
 form p.hint { margin: 0; }
 .hidden { display: none !important; }
 @media (prefers-reduced-motion: reduce) {
-  :is(button, .chip) { transition: none; }
-  :is(button, .chip):is(:hover, :active):not(:disabled) { transform: none; }
+  :is(button, .chip, .related-mr-link), .related-mr-link::after,
+  li:not(.empty, .separator), li:not(.empty, .separator)::after { transition: none; }
+  :is(button, .chip):is(:hover, :active):not(:disabled), .related-mr-link:is(:hover, :active),
+  li:not(.empty, .separator):is(:hover, :focus-within, :active) { transform: none; }
 }
