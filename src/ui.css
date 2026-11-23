@@ -291,7 +291,7 @@ li > .trail:empty { display: none; }
   filter: drop-shadow(2px 2px 0 var(--shadow));
 }
 .tab .warning-count {
-  top: -15.5px; left: 10%;
+  top: -13px; left: 10%;
   display: grid; place-items: center;
   border-radius: 50% 50% 50% 0; clip-path: none;
   /* 左下の角を反転してから回し、先端を下に向ける。 */
