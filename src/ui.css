@@ -287,6 +287,9 @@ li > .trail:empty { display: none; }
   to { stroke-dashoffset: 0; }
 }
 .bar { display: flex; flex-wrap: wrap; gap: 8px; padding: 6px 10px 8px; border-bottom: 1px solid var(--line); }
+/* 折り返した行の上辺と、接続線が横切る位置の間に余白を取る。 */
+.bar.repos { row-gap: 12px; }
+.repos.connector-detour + .bar { padding-top: 8px; }
 .bar:empty { display: none; }
 /* 選択中の絞り込みに操作色を使う。 */
 .chip {

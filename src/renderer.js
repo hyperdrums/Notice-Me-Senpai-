@@ -114,11 +114,16 @@ const chipConnectors = [
 });
 const [todoConnector, assignedConnector] = chipConnectors;
 
-function chipConnectorPath(origin, upper, lower) {
+function chipConnectorPath(origin, upper, lower, detourBar) {
   const x1 = upper.left + upper.width / 2 - origin.left;
   const x2 = lower.left + lower.width / 2 - origin.left;
   const y1 = upper.bottom + 4 - origin.top;
   const y2 = lower.top - 4 - origin.top;
+  if (detourBar) {
+    const laneX = detourBar.left + 4 - origin.left;
+    const laneY = detourBar.bottom + 4 - origin.top;
+    return `M ${x1} ${y1} V ${y1 + 4} H ${laneX} V ${laneY} H ${x2} V ${y2}`;
+  }
   return `M ${x1} ${y1} V ${(y1 + y2) / 2} H ${x2} V ${y2}`;
 }
 
@@ -176,10 +181,15 @@ function scheduleChipConnectors() {
         continue;
       }
       const repo = repos.querySelector('.chip.active');
+      const upper = repo?.getBoundingClientRect();
+      const hasLowerRepoRow = upper && [...repos.querySelectorAll('.chip:not(.active)')]
+        .some(chip => chip.getBoundingClientRect().bottom > upper.bottom + 2);
+      repos.classList.toggle('connector-detour', Boolean(hasLowerRepoRow));
       const type = types.querySelector('.chip.active')?.getBoundingClientRect();
       const row = connector.hoveredRow;
       const origin = svg.getBoundingClientRect();
-      updateChipConnectorPath(svg, 'type', repo && type ? chipConnectorPath(origin, repo.getBoundingClientRect(), type) : '');
+      const detourBar = hasLowerRepoRow ? repos.getBoundingClientRect() : null;
+      updateChipConnectorPath(svg, 'type', upper && type ? chipConnectorPath(origin, upper, type, detourBar) : '');
       const rowPath = type && row
         ? rowConnectorPath(origin, type, types.getBoundingClientRect(), list.getBoundingClientRect(), row.getBoundingClientRect())
         : '';
