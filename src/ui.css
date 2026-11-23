@@ -95,8 +95,11 @@ header .tab:focus-visible { z-index: 1; }
   color: var(--muted); font: 600 12px var(--mono-font); font-variant-numeric: tabular-nums;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; text-align: right;
 }
-#status .status-count { color: var(--text); }
+.refresh-wrap { display: flex; flex-direction: column; align-items: center; gap: 3px; }
 #refresh svg { display: block; }
+#last-updated { color: var(--muted); font: 10px var(--mono-font); font-variant-numeric: tabular-nums; }
+#last-updated.flash { animation: last-updated-flash .6s ease-out; }
+@keyframes last-updated-flash { from { color: var(--lime); } to { color: var(--muted); } }
 header .tab[data-view="settings"] svg { display: block; }
 @media (max-width: 400px) {
   header { grid-template-columns: minmax(0, 1fr) max-content; column-gap: 6px; }
@@ -104,7 +107,7 @@ header .tab[data-view="settings"] svg { display: block; }
   header .tab { padding-inline: 7px; font-size: 12px; }
   header .spacer { display: none; }
   #status { text-align: left; }
-  #refresh { justify-self: end; }
+  .refresh-wrap { justify-self: end; }
 }
 body > section {
   position: relative; isolation: isolate;
@@ -329,6 +332,7 @@ form p.hint { margin: 0; }
 .hidden { display: none !important; }
 @media (prefers-reduced-motion: reduce) {
   .chip-connector path { animation: none; }
+  #last-updated.flash { animation: none; }
   .tab-indicator, :is(button, .chip, .related-mr-link), .related-mr-link::after,
   li:not(.empty, .separator), li:not(.empty, .separator)::after { transition: none; }
   :is(button, .chip):is(:hover, :active):not(:disabled), .related-mr-link:is(:hover, :active),

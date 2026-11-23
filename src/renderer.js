@@ -387,16 +387,26 @@ function renderAssigned(items, limited, error, relatedMrsByIssue = {}) {
 }
 
 function render(s) {
+  const updated = s.updatedAt !== current.updatedAt;
   current = s;
   const message = [s.error, s.assignedError].filter(Boolean).join(' / ');
   $('#error').classList.toggle('hidden', !message);
   $('#error').textContent = message;
   renderSettingsMessage();
-  const status = $('#status');
-  status.textContent = s.loading ? tr(lang, 'loading') : '';
-  if (!s.loading && s.updatedAt) {
-    const count = tr(lang, 'statusCount', { n: s.count });
-    status.append(s.count > 0 ? el('span', 'status-count', count) : count, ` / ${new Date(s.updatedAt).toLocaleTimeString()}`);
+  $('#status').textContent = s.loading ? tr(lang, 'loading') : '';
+  const lastUpdated = $('#last-updated');
+  lastUpdated.hidden = s.updatedAt == null;
+  if (!lastUpdated.hidden) {
+    const time = new Date(s.updatedAt).toLocaleTimeString(lang, {
+      hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23',
+    });
+    lastUpdated.textContent = time;
+    lastUpdated.title = tr(lang, 'lastUpdated', { time });
+    if (updated) {
+      lastUpdated.classList.remove('flash');
+      void lastUpdated.offsetWidth; // 直前のアニメーションが残っていても最初から再生する
+      lastUpdated.classList.add('flash');
+    }
   }
   renderTodos(s.todos, s.error);
   $('#mrSyncError').hidden = !s.mrSyncError;

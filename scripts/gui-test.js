@@ -157,7 +157,6 @@ async function shot(name, dir = OUT) {
 // OS の配色設定を変えても、ネイティブコントロールを含め同じダークの画面になる。
 // 検証方法: 全要素（::before / ::after の疑似要素と寸法を含む）の計算スタイルを
 // ダーク/ライトで比較し、差分をプロパティ名と両値で報告する。
-// #status は更新時刻が秒で動くため、比較中だけ textContent を空にする。
 async function checkDarkTheme(label) {
   // hover/active のトランジション途中の値（drop-shadow のpx等）が採取間でズレて誤検出しないよう、
   // 採取中だけ各要素の style に transition/animation を止める値を当てる（静的な計算値に固定）。
@@ -169,8 +168,6 @@ async function checkDarkTheme(label) {
     }
   })()`);
   const collect = () => evl(`(() => {
-    const restore = [];
-    for (const e of document.querySelectorAll('#status')) { restore.push([e, e.textContent]); e.textContent = ''; }
     const keyOf = (el, i) => el.id ? '#' + el.id
       : (typeof el.className === 'string' && el.className.trim())
         ? el.tagName.toLowerCase() + '.' + el.className.trim().split(/\\s+/).join('.')
@@ -189,7 +186,6 @@ async function checkDarkTheme(label) {
       parts.push(k + '::before\\u0002\\u0002' + snap(el, '::before'));
       parts.push(k + '::after\\u0002\\u0002' + snap(el, '::after'));
     });
-    for (const [e, t] of restore) e.textContent = t;
     return parts.join('\\u0003');
   })()`);
   const diff = (a, b) => {
@@ -296,11 +292,19 @@ async function checkConfigMessage(key, settingsKey = key) {
   console.log(`設定を書き込み: ${m.url}\n`);
 
   // 2) アプリを起動（DevTools プロトコル有効）
+  await m.fail('todos', 500);
   await startApp(profile);
   if (!(await evlMain(STUB_MAIN))) throw new Error('main プロセスの差し替えに失敗');
   console.log('アプリ起動，画面に接続');
+  await waitFor('初回取得のエラー', `document.querySelector('#error').textContent.includes('HTTP 500')`);
+  const lastUpdated = `document.querySelector('#last-updated')`;
+  check('初回の取得成功前は更新時刻を表示しない', await evl(`
+    ${lastUpdated}.hidden && getComputedStyle(${lastUpdated}).display === 'none'
+  `));
 
   // 3) モックのデータが描画される
+  await m.fail('todos', 0);
+  await click('#refresh');
   await waitFor('To-Do 一覧 4 件', `document.querySelectorAll('#todos li').length === 4`);
   check('To-Do タブに 4 件描画', (await count('#todos li')) === 4);
   await checkTabIndicator('起動時にインジケーターが Activity に合う', 'list');
@@ -354,8 +358,15 @@ async function checkConfigMessage(key, settingsKey = key) {
         && Array.from(${activityRows}).every(row => !row.getAnimations({ subtree: true }).length);
     })()`, 5000));
 
-  const status = await evl(`document.querySelector('#status').textContent`);
-  check('ヘッダに件数と更新時刻', /4 件/.test(status), status);
+  const headerText = await evl(`document.querySelector('header').textContent`);
+  check('ヘッダに件数を表示しない', !headerText.includes('件'), headerText.trim());
+  check('更新完了後の #status は空', (await evl(`document.querySelector('#status').textContent`)) === '');
+  const { time, title, visible } = await evl(`({
+    time: ${lastUpdated}.textContent, title: ${lastUpdated}.title,
+    visible: !${lastUpdated}.hidden && ${lastUpdated}.getBoundingClientRect().height > 0,
+  })`);
+  check('更新ボタン下に更新時刻を表示する', visible && /^\d{1,2}:\d{2}:\d{2}$/.test(time), time);
+  check('更新時刻の title に最終更新を表示する', title === `最終更新 ${time}`, title);
   check('エラーバー非表示', await evl(`document.querySelector('#error').classList.contains('hidden')`));
 
   const tags = await evl(`[...document.querySelectorAll('#todos .tag')].map(e => e.textContent).join(',')`);
@@ -847,10 +858,15 @@ async function checkConfigMessage(key, settingsKey = key) {
   await waitFor('上限のお知らせが消える', limitHidden);
 
   // 9-5) 作業アイテムが応答しなくても To-Do は待たされず、時間切れで部分的な失敗になる
+  const previousUpdatedAt = await evl('current.updatedAt');
   await m.hangIssues(true);
   await m.push();
   await click('#refresh');
-  await waitFor('作業アイテムを待たずに To-Do が更新', `document.querySelectorAll('#todos li').length === 6 && /6 件/.test(document.querySelector('#status').textContent)`, 10000);
+  await waitFor('作業アイテムを待たずに To-Do が更新', `
+    document.querySelectorAll('#todos li').length === 6 && current.updatedAt > ${previousUpdatedAt}
+      && !${lastUpdated}.hidden && ${lastUpdated}.textContent
+      && !document.querySelector('#status').textContent
+  `, 10000);
   check('作業アイテムが応答しなくても To-Do とヘッダは更新', true);
   check('作業アイテムが応答しなくても To-Do のバッジは更新', (await evl(`window.__badge`)) === '6');
   check('作業アイテムが応答しなくても新着を通知', (await shownBodies()).includes('モックから押した新着 3'));
@@ -943,8 +959,8 @@ async function checkConfigMessage(key, settingsKey = key) {
   check('種別ラベルが英語', /Mentioned/.test(tagsEn) && /Assigned/.test(tagsEn) && !/メンション/.test(tagsEn), tagsEn);
   const doneEn = await evl(`document.querySelector('#todos button').getAttribute('aria-label')`);
   check('完了ボタンの読み上げ名が Done', doneEn === 'Done', doneEn);
-  const statusEn = await evl(`document.querySelector('#status').textContent`);
-  check('ヘッダが英語', /\d+ to-dos/.test(statusEn), statusEn);
+  const titleEn = await evl(`${lastUpdated}.title`);
+  check('更新時刻の title が英語', titleEn === `Updated ${await evl(`${lastUpdated}.textContent`)}`, titleEn);
   const dueEn = await evl(`[...document.querySelectorAll('#todos .due')].map(e => e.textContent).join(' | ')`);
   check('期限表示が英語', dueEn.includes('overdue') && dueEn.includes('Milestone'), dueEn);
   await checkAssignedWarning('英語の Items タブに警告バッジと超過数の補助文言を表示する', '1 overdue');
@@ -973,7 +989,7 @@ async function checkConfigMessage(key, settingsKey = key) {
     const track = header.querySelector('.tab-track');
     const trackRect = track.getBoundingClientRect();
     const tabs = [...track.querySelectorAll('.tab')];
-    return [track, ...tabs, header.querySelector('#status'), header.querySelector('#refresh')].flatMap(element => {
+    return [track, ...tabs, header.querySelector('#refresh'), header.querySelector('#last-updated')].flatMap(element => {
       const rect = element.getBoundingClientRect();
       const outside = rect.width === 0 || rect.left < bounds.left || rect.right > bounds.right;
       const clippedTab = element.matches('.tab') && (rect.left < trackRect.left || rect.right > trackRect.right
@@ -1100,7 +1116,7 @@ async function checkConfigMessage(key, settingsKey = key) {
   await evl(submit);
   await waitFor('トークンの再入力で取得が再開する', `
     !${settingsText} && document.querySelector('#error').classList.contains('hidden')
-      && document.querySelector('#status').textContent.includes('to-dos')
+      && !${lastUpdated}.hidden && ${lastUpdated}.title.startsWith('Updated ')
   `);
   check('トークンを再入力して保存すると案内が消え、暗号化データが更新される',
     JSON.parse(fs.readFileSync(configFile, 'utf8')).tokenEnc !== JSON.parse(broken).tokenEnc);
