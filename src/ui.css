@@ -237,9 +237,12 @@ li.separator { padding: 4px 10px; color: var(--muted); font-size: 12px; font-wei
 .related-mr-link::after {
   content: ''; position: absolute; inset: 0; z-index: -1; pointer-events: none;
   --corner-size: 4px;
-  background: var(--control-bg); transition: background-color .12s;
+  background: var(--line); transition: background-color .12s;
 }
-.related-mr-link:hover::after { background: var(--control-edge); }
+.related-mr-link:hover::after { background: #6a6a6a; }
+.related-mr-link::before {
+  -webkit-text-stroke: 2px var(--charcoal); paint-order: stroke fill;
+}
 .related-mr-link:hover { transform: translateY(-2px); }
 .related-mr-link:active { transform: translate(2px, 3px); }
 /* 行の末尾の枠（期限）。本文が省略されても、期限は右端で必ず読める */
