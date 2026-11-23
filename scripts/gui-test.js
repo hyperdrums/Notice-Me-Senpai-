@@ -147,6 +147,59 @@ async function checkChipConnector(label, view, repos, types) {
   })()`;
   check(label, await waitFor(label, matches, 5000));
 }
+
+async function checkWrappedChipConnector() {
+  await checkChipConnector('折り返し後も Items の接続線がアクティブなチップに合う', 'assigned', 'assignedRepos', 'assignedTypes');
+  const route = await evl(`(() => {
+    const repos = document.querySelector('#assignedRepos');
+    const upper = repos.querySelector('.chip.active');
+    const lower = document.querySelector('#assignedTypes .chip.active');
+    const path = document.querySelector('#assigned > .chip-connector > path[data-target="type"]');
+    const origin = path.ownerSVGElement.getBoundingClientRect();
+    const bar = repos.getBoundingClientRect();
+    const repo = upper.getBoundingClientRect();
+    const type = lower.getBoundingClientRect();
+    const x1 = repo.left + repo.width / 2;
+    const x2 = type.left + type.width / 2;
+    const repoChips = [...repos.querySelectorAll('.chip')];
+    const secondRow = repoChips.map(chip => chip.getBoundingClientRect()).filter(rect => rect.bottom > repo.bottom + 2);
+    const twoRows = new Set(repoChips.map(chip => chip.offsetTop)).size === 2;
+    const blocksDirectPath = secondRow.some(rect => rect.left <= x1 && x1 <= rect.right);
+    const tokens = path.getAttribute('d').split(/\\s+/);
+    const expected = ['M', x1 - origin.left, repo.bottom + 4 - origin.top,
+      'V', repo.bottom + 8 - origin.top, 'H', bar.left + 4 - origin.left,
+      'V', bar.bottom + 4 - origin.top, 'H', x2 - origin.left, 'V', type.top - 4 - origin.top];
+    const followsLane = tokens.length === expected.length && expected.every((value, i) =>
+      typeof value === 'string' ? tokens[i] === value : Math.abs(Number(tokens[i]) - value) < 0.5);
+    const collisions = [];
+    let clipped = false;
+    if (followsLane) {
+      const chips = [...document.querySelectorAll('#assigned .bar .chip')].filter(chip => chip !== upper && chip !== lower);
+      const obstacles = chips.map(chip => ({ label: chip.textContent, rect: chip.getBoundingClientRect() }));
+      const halfStroke = parseFloat(getComputedStyle(path).strokeWidth) / 2;
+      let x = origin.left + Number(tokens[1]);
+      let y = origin.top + Number(tokens[2]);
+      for (let i = 3; i < tokens.length; i += 2) {
+        const nextX = tokens[i] === 'H' ? origin.left + Number(tokens[i + 1]) : x;
+        const nextY = tokens[i] === 'V' ? origin.top + Number(tokens[i + 1]) : y;
+        const left = Math.min(x, nextX) - halfStroke;
+        const right = Math.max(x, nextX) + halfStroke;
+        const top = Math.min(y, nextY) - halfStroke;
+        const bottom = Math.max(y, nextY) + halfStroke;
+        clipped ||= left < origin.left || right > origin.right || top < origin.top || bottom > origin.bottom;
+        for (const { label, rect } of obstacles) {
+          if (left <= rect.right && right >= rect.left && top <= rect.bottom && bottom >= rect.top) collisions.push(label);
+        }
+        x = nextX;
+        y = nextY;
+      }
+    }
+    return { twoRows, blocksDirectPath, followsLane, collisions, clipped };
+  })()`);
+  check('320px ではリポジトリが 2 行になり、直下に別のチップがある', route.twoRows && route.blocksDirectPath);
+  check('迂回線が左レーンを通り、チップと交差せず SVG 内に収まる',
+    route.followsLane && route.collisions.length === 0 && !route.clipped, JSON.stringify(route));
+}
 const swipeFinished = `!document.querySelector('section:is(.enter-right, .enter-left)')`;
 
 async function shot(name, dir = OUT) {
@@ -1102,6 +1155,19 @@ async function checkConfigMessage(key, settingsKey = key) {
       && narrowWarnings.length === 4 && narrowWarnings.every(chip => chip.valid), JSON.stringify(narrowTitlebar));
   await shot('items-320.png', PHASE12_OUT);
   await shot('english-320.png');
+  const wrapProject = 'other/connector-routing-fixture';
+  m.state.issues.push({
+    ...m.state.issues.find(i => i.id === 224),
+    id: 290, iid: 90, project_id: 90, references: { full: `${wrapProject}#90` },
+    web_url: `${m.url}/${wrapProject}/-/issues/90`,
+  });
+  await evl('window.api.refresh()');
+  const wrapChip = `#assignedRepos .chip[data-value="${wrapProject}"]`;
+  await waitFor('折り返し用のリポジトリチップが表示される', `document.querySelector(${JSON.stringify(wrapChip)})`);
+  await checkWrappedChipConnector();
+  m.state.issues.pop();
+  await evl('window.api.refresh()');
+  await waitFor('折り返し用のリポジトリチップが消える', `!document.querySelector(${JSON.stringify(wrapChip)})`);
   await click('.tab[data-view=list]');
   check('320px でも Activity 行の完了ボタンが収まる', narrowWidth === 320 && await evl(`(() => {
     const buttons = [...document.querySelectorAll('#todos .done-button')];
