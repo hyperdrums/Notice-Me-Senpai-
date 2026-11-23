@@ -284,25 +284,23 @@ li > .trail:empty { display: none; }
 }
 .warning-count {
   position: absolute;
-  top: -6px; left: -6px;
+  top: -12px; left: -4px;
   width: 12px; height: 12px;
   background: var(--accent-danger);
-  clip-path: polygon(50% 0, 100% 50%, 50% 100%, 0 50%);
-  filter: drop-shadow(2px 2px 0 var(--shadow));
-}
-.tab .warning-count {
-  top: -13px; left: 10%;
   display: grid; place-items: center;
   border-radius: 50% 50% 50% 0; clip-path: none;
   /* 左下の角を反転してから回し、先端を下に向ける。 */
   transform: rotate(45deg) scaleX(-1);
-  z-index: 1;
+  filter: drop-shadow(2px 2px 0 var(--shadow));
 }
-.tab .warning-count::before {
+.warning-count::before {
   content: "!";
   font-weight: 800; font-size: 9px; line-height: 1; color: #fff;
   font-style: normal; letter-spacing: normal;
   transform: scaleX(-1) rotate(-45deg);
+}
+.tab .warning-count {
+  top: -13px; left: 10%; z-index: 1;
 }
 /* 期限: 通常は控えめ、間近は黄系、超過は赤＋太字。 */
 .due { color: var(--muted); font-variant-numeric: tabular-nums; font-weight: 600; }

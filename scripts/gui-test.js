@@ -250,6 +250,9 @@ async function startApp(profile) {
   const [mainTarget] = await json(`http://127.0.0.1:${INSPECT_PORT}/json/list`);
   mainCdp = await connect(mainTarget.webSocketDebuggerUrl);
   await mainCdp.send('Runtime.enable');
+  // ウィンドウが覆われても描画を続け、接続線の requestAnimationFrame を止めない。
+  await evlMain(`process.mainModule.require('electron').BrowserWindow.getAllWindows()[0]
+    .webContents.setBackgroundThrottling(false)`);
 }
 
 async function stopApp() {
@@ -411,14 +414,27 @@ async function checkConfigMessage(key, settingsKey = key) {
   };
   const chipWarnings = (bar = '#assigned') => evl(`Array.from(document.querySelectorAll(${JSON.stringify(`${bar} .chip:has(.warning-count)`)}), chip => {
     const badge = chip.querySelector('.warning-count');
-    const { width, height } = badge.getBoundingClientRect();
+    const chipRect = chip.getBoundingClientRect();
+    const badgeRect = badge.getBoundingClientRect();
+    const x = badgeRect.left + badgeRect.width / 2;
+    const y = badgeRect.top + badgeRect.height / 2;
+    const tipX = x - chipRect.left;
+    const tipY = badgeRect.bottom - chipRect.top;
+    const tipInCorner = tipX >= 1 && tipX <= 4 && tipY >= 1 && tipY <= 4;
+    const visible = document.elementFromPoint(x, y - 5) === badge
+      && document.elementFromPoint(x - 4, y - 2) === badge
+      && document.elementFromPoint(x, badgeRect.bottom - 1) === badge;
     const tabBadge = document.querySelector('#assignedTab .warning-count');
     const bs = getComputedStyle(badge), ts = getComputedStyle(tabBadge);
-    const diamond = bs.clipPath === 'polygon(50% 0px, 100% 50%, 50% 100%, 0px 50%)';
+    const mark = getComputedStyle(badge, '::before');
+    const pin = bs.clipPath === 'none' && bs.borderRadius === '50% 50% 50% 0px'
+      && bs.transform === ts.transform && bs.backgroundColor === ts.backgroundColor
+      && mark.content === '"!"' && mark.color === 'rgb(255, 255, 255)';
     return { value: chip.dataset.value, name: chip.getAttribute('aria-label'), title: chip.title,
+      tipX, tipY, visible,
       valid: chip.tagName === 'BUTTON' && chip.querySelectorAll('.warning-count').length === 1
-        && badge.getAttribute('aria-hidden') === 'true' && width === 12 && height === 12
-        && bs.top === '-6px' && bs.left === '-6px' && diamond && bs.backgroundColor === ts.backgroundColor };
+        && badge.getAttribute('aria-hidden') === 'true' && badge.offsetWidth === 12 && badge.offsetHeight === 12
+        && pin && tipInCorner && visible };
   })`);
   const titlebarState = `(() => {
     const titlebar = document.querySelector('.window-titlebar');
@@ -491,7 +507,7 @@ async function checkConfigMessage(key, settingsKey = key) {
   await checkDarkTheme('作業アイテム');
   const projectWarnings = await chipWarnings('#assignedRepos');
   const typeWarnings = await chipWarnings('#assignedTypes');
-  check('期限超過があるプロジェクトと All にだけ同じ赤ひし形の警告を付ける',
+  check('期限超過があるプロジェクトと All にだけ左上に刺さる警告ピンを付ける',
     projectWarnings.map(chip => chip.value).join('|') === 'all|group/proj-a'
       && projectWarnings.every(chip => chip.valid && chip.name.endsWith('(期限超過 1 件)'))
       && projectWarnings[0].title === '期限超過 1 件' && projectWarnings[1].title === 'group/proj-a · 期限超過 1 件',
