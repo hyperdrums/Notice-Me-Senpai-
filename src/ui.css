@@ -209,6 +209,9 @@ button:is(:hover, :active):not(:disabled, .chip) {
 button:disabled { opacity: .6; cursor: default; }
 li button { align-self: center; flex-shrink: 0; }
 li .done-button {
+  --button-face: var(--text);
+  --button-text: var(--text-on-accent);
+  --button-edge: #6a6a6a;
   display: grid; place-items: center;
   margin-bottom: 0; padding: 5px 8px 8px 5px;
 }
