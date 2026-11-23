@@ -526,20 +526,37 @@ let m = null;
   check('mark_as_done が呼ばれた', snap.done.length === 1 && snap.done[0].id === 101, JSON.stringify(snap.done));
 
   // 8) バッジの描画 → main に渡す流れ。preload は凍結していてフックできないので、
-  //    ページ読み込み前に canvas を数える仕込みを入れてから再読み込みする
+  //    canvas のサイズと main に届く IPC の内容を記録してから再読み込みする
+  await evlMain(`(() => {
+    const { ipcMain, nativeImage } = process.mainModule.require('electron');
+    ipcMain.once('badge', (_event, badge) => {
+      globalThis.__badgePayload = {
+        keys: Object.keys(badge).sort(),
+        count: badge.count,
+        size: nativeImage.createFromDataURL(badge.overlay).getSize(),
+      };
+    });
+  })()`);
   await cdp.send('Page.addScriptToEvaluateOnNewDocument', {
-    source: `window.__draws = 0;
+    source: `window.__draws = [];
       const orig = HTMLCanvasElement.prototype.toDataURL;
-      HTMLCanvasElement.prototype.toDataURL = function (...a) { window.__draws++; return orig.apply(this, a); };
+      HTMLCanvasElement.prototype.toDataURL = function (...a) {
+        window.__draws.push([this.width, this.height]);
+        return orig.apply(this, a);
+      };
       const origText = CanvasRenderingContext2D.prototype.fillText;
       CanvasRenderingContext2D.prototype.fillText = function (t, ...a) { window.__badge = t; return origText.call(this, t, ...a); };`,
   });
   await cdp.send('Page.reload');
   await waitFor('再読み込み後に一覧', `document.querySelectorAll('#todos li').length === 3`, 20000);
-  await waitFor('バッジ画像を描画', `window.__draws >= 2`, 10000);
+  await waitFor('バッジ画像を描画', `window.__draws.length > 0`, 10000);
+  await waitUntil('バッジ IPC が main に届く', () => evlMain('globalThis.__badgePayload'));
   const draws = await evl(`window.__draws`);
-  check('バッジ画像を描画して main に渡す', draws >= 2, `${draws} 回描画`);
-  // 作業アイテムは 7 件あるが、バッジとトレイの件数は To-Do だけ
+  const payload = await evlMain('globalThis.__badgePayload');
+  check('16px のバッジ画像を描画して main に渡す', draws.every(([w, h]) => w === 16 && h === 16)
+    && payload.keys.join(',') === 'count,overlay' && payload.count === 3
+    && payload.size.width === 16 && payload.size.height === 16, `${draws.length} 回描画`);
+  // 作業アイテムは 7 件あるが、バッジの件数は To-Do だけ
   const badge = await evl(`window.__badge`);
   check('バッジは To-Do の件数だけ', badge === '3', String(badge));
   const stateCount = await evl(`window.api.getState().then(s => s.count)`);

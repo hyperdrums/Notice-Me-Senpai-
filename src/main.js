@@ -9,6 +9,9 @@ const { newMrCache, rememberIssues, mrView, syncMrProject } = require('./mr-sync
 const { newEtagStore, fetchWithEtag, invalidate, clearEtags } = require('./etag.js');
 const { CONFIG_DEFAULTS, ASSIGNED_LIMIT, ASSIGNED_TIMEOUT_MS, apiUrl, mergeConfig, intervalSec, freshTodos, assignedPatch, tr } = require('./lib.js');
 
+const idleIcon = nativeImage.createFromPath(path.join(__dirname, 'assets', 'nms-idle.ico'));
+const alertIcon = nativeImage.createFromPath(path.join(__dirname, 'assets', 'nms-alert.ico'));
+
 // 軽量化: GPU・ネットワークを別プロセスにせず、メインに統合する（素のHTMLなのでGPU不要）
 app.disableHardwareAcceleration();
 app.commandLine.appendSwitch('in-process-gpu');
@@ -278,21 +281,6 @@ function openUrl(url) {
 }
 
 // ---------- ウィンドウ / トレイ ----------
-// 単色の丸アイコンをビットマップで生成（画像ファイル不要）
-function circleIcon(size, [r, g, b]) {
-  const buf = Buffer.alloc(size * size * 4);
-  const c = (size - 1) / 2;
-  for (let y = 0; y < size; y++) {
-    for (let x = 0; x < size; x++) {
-      const d = Math.hypot(x - c, y - c);
-      const a = Math.max(0, Math.min(1, size / 2 - d)) * 255;
-      const i = (y * size + x) * 4;
-      buf[i] = b; buf[i + 1] = g; buf[i + 2] = r; buf[i + 3] = a; // BGRA
-    }
-  }
-  return nativeImage.createFromBitmap(buf, { width: size, height: size });
-}
-
 function showWindow() {
   if (!win) return;
   if (win.isMinimized()) win.restore();
@@ -305,7 +293,7 @@ function createWindow() {
   win = new BrowserWindow({
     width: 520,
     height: 640,
-    icon: circleIcon(64, [226, 67, 41]),
+    icon: idleIcon,
     frame: false,
     autoHideMenuBar: true,
     show: false,
@@ -341,7 +329,7 @@ function trayMenu() {
 }
 
 function createTray() {
-  tray = new Tray(circleIcon(32, [226, 67, 41]));
+  tray = new Tray(idleIcon);
   tray.setToolTip(tr(config.lang, 'appTitle'));
   tray.setContextMenu(trayMenu());
   tray.on('click', showWindow);
@@ -396,11 +384,11 @@ ipcMain.handle('done', async (_e, id) => {
   }
   await poll();
 });
-// レンダラーが canvas で描いたバッジ画像を受け取る
-ipcMain.on('badge', (_e, { overlay, trayIcon, count }) => {
+// タスクバーの件数バッジとトレイの表示を更新する
+ipcMain.on('badge', (_e, { overlay, count }) => {
   if (!win) return;
   win.setOverlayIcon(count > 0 ? nativeImage.createFromDataURL(overlay) : null, tr(config.lang, 'statusCount', { n: count }));
-  if (tray && trayIcon) tray.setImage(nativeImage.createFromDataURL(trayIcon));
+  tray?.setImage(count > 0 ? alertIcon : idleIcon);
   tray?.setToolTip(tr(config.lang, 'trayTooltip', { n: count }));
 });
 
