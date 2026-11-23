@@ -290,6 +290,11 @@ li > .trail:empty { display: none; }
   clip-path: polygon(50% 0, 100% 50%, 50% 100%, 0 50%);
   filter: drop-shadow(2px 2px 0 var(--shadow));
 }
+.tab .warning-count {
+  top: -7px; left: 50%; transform: translateX(-50%);
+  margin-top: -3px; /* トラックの上枠 1px と内側の余白 2px を相殺する。 */
+  z-index: 1;
+}
 /* 期限: 通常は控えめ、間近は黄系、超過は赤＋太字。 */
 .due { color: var(--muted); font-variant-numeric: tabular-nums; font-weight: 600; }
 .due.soon, .due.over {

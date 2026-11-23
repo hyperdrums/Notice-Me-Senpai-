@@ -457,6 +457,28 @@ async function checkConfigMessage(key, settingsKey = key) {
   await checkAssignedWarning('Items と警告バッジを表示し、超過数は読み上げとツールチップで伝える', '期限超過 1 件');
   await click('.tab[data-view=assigned]');
   await checkTabIndicator('タブ切替でインジケーターが Items に移動する', 'assigned');
+  const warningPosition = await evl(`(() => {
+    const tab = document.querySelector('#assignedTab');
+    const badge = tab.querySelector('.warning-count');
+    if (!badge) return null;
+    const tabRect = tab.getBoundingClientRect();
+    const badgeRect = badge.getBoundingClientRect();
+    const trackTop = tab.closest('.tab-track').getBoundingClientRect().top;
+    const x = badgeRect.left + badgeRect.width / 2;
+    const y = badgeRect.top + badgeRect.height / 2;
+    return {
+      centerOffsetX: x - (tabRect.left + tabRect.width / 2),
+      centerOffsetY: y - trackTop,
+      bottomOffsetY: badgeRect.bottom - trackTop,
+      visibleAcrossBorder: document.elementFromPoint(x, y) === badge
+        && document.elementFromPoint(x, trackTop + 1) === badge,
+    };
+  })()`);
+  check('Items の警告バッジはタブ中央にあり、トラック上枠をまたいで見える',
+    warningPosition && Math.abs(warningPosition.centerOffsetX) <= 4
+      && warningPosition.centerOffsetY < 0 && warningPosition.bottomOffsetY > 0
+      && warningPosition.visibleAcrossBorder,
+    JSON.stringify(warningPosition));
   await waitFor('作業アイテム一覧 7 件', `document.querySelectorAll(${JSON.stringify(ROWS)}).length === 7`);
   await checkChipConnector('Items の接続線がアクティブなチップに合う', 'assigned', 'assignedRepos', 'assignedTypes');
   check('タブ切替で非表示の Activity のパスを空にする', (await count('#list .chip-connector path')) === 0);
@@ -937,7 +959,7 @@ async function checkConfigMessage(key, settingsKey = key) {
       const clippedIcon = hasIcon && (!icon || icon.width === 0 ||
         icon.left < rect.left || icon.right > rect.right || icon.top < rect.top || icon.bottom > rect.bottom);
       const badge = element.querySelector('.warning-count')?.getBoundingClientRect();
-      // 警告バッジはタブ/チップの左上角に意図的にはみ出して配置するため、サイズだけを検証する
+      // 警告バッジはトラックの上枠をまたぐため、ここではサイズだけを検証する。
       const clippedBadge = badge && (badge.width < 10 || badge.width > 14);
       return outside || clippedTab || clippedIcon || clippedBadge || badTrack
         ? [element.id || element.dataset.view || element.className] : [];
