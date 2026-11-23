@@ -14,8 +14,62 @@ document.querySelectorAll('.tab').forEach(tab => {
   tab.onclick = () => {
     document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t === tab));
     for (const v of VIEWS) $(`#${v}`).classList.toggle('hidden', tab.dataset.view !== v);
+    scheduleChipConnectors();
   };
 });
+
+// ---------- チップの接続線 ----------
+const svgNS = 'http://www.w3.org/2000/svg';
+const chipConnectors = [
+  ['#list', '#todoRepos', '#actions'],
+  ['#assigned', '#assignedRepos', '#assignedTypes'],
+].map(([view, repos, types]) => {
+  const section = $(view);
+  const svg = document.createElementNS(svgNS, 'svg');
+  svg.setAttribute('class', 'chip-connector');
+  svg.setAttribute('aria-hidden', 'true');
+  section.prepend(svg);
+  return { section, svg, repos: $(repos), types: $(types) };
+});
+
+function chipConnectorPath({ section, svg, repos, types }) {
+  if (section.classList.contains('hidden')) return '';
+  const repo = repos.querySelector('.chip.active');
+  const type = types.querySelector('.chip.active');
+  if (!repo || !type) return '';
+
+  const origin = svg.getBoundingClientRect();
+  const upper = repo.getBoundingClientRect();
+  const lower = type.getBoundingClientRect();
+  const x1 = upper.left + upper.width / 2 - origin.left;
+  const x2 = lower.left + lower.width / 2 - origin.left;
+  const y1 = upper.bottom + 4 - origin.top;
+  const y2 = lower.top - 4 - origin.top;
+  return `M ${x1} ${y1} V ${(y1 + y2) / 2} H ${x2} V ${y2}`;
+}
+
+let chipConnectorFrame = null;
+function scheduleChipConnectors() {
+  if (chipConnectorFrame !== null) return;
+  chipConnectorFrame = requestAnimationFrame(() => {
+    chipConnectorFrame = null;
+    for (const connector of chipConnectors) {
+      const { svg } = connector;
+      const d = chipConnectorPath(connector);
+      if (d === (svg.firstElementChild?.getAttribute('d') ?? '')) continue;
+      if (!d) {
+        svg.replaceChildren();
+        continue;
+      }
+      // パスが変わった時だけ差し替え、描画アニメーションを再生する。
+      const path = document.createElementNS(svgNS, 'path');
+      path.setAttribute('d', d);
+      path.setAttribute('pathLength', '1');
+      svg.replaceChildren(path);
+    }
+  });
+}
+window.addEventListener('resize', scheduleChipConnectors);
 
 // ---------- 言語 ----------
 // data-i18n の文言と操作ラベルを現在の言語で表示する
@@ -67,6 +121,7 @@ function renderChips(container, key, entries, labelOf = v => v, titleOf = () => 
   if (filter[key] !== 'all' && !entries.has(filter[key])) filter[key] = 'all';
   const focused = container.contains(document.activeElement) ? document.activeElement.dataset.value : undefined;
   container.replaceChildren();
+  scheduleChipConnectors();
   if (entries.size === 0) return;
   const all = [...entries.values()].reduce((sum, n) => sum + n, 0);
   for (const [value, n] of [['all', all], ...entries]) {
