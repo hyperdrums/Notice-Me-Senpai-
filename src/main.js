@@ -402,15 +402,18 @@ ipcMain.handle('done', async (_e, id) => {
   const generation = connectionGeneration;
   try {
     await api(`/todos/${Number(id)}/mark_as_done`, 'POST');
-    if (generation !== connectionGeneration) return;
+    if (generation !== connectionGeneration) return false;
     // サーバ側で確実に変わった。次回 poll が偽 304 で古い一覧を返さないよう捨てる
     invalidate(etagStore, apiUrl(config.baseUrl, TODOS_PATH));
     invalidate(etagStore, apiUrl(config.baseUrl, ASSIGNED_PATH));
   } catch (e) {
-    if (generation !== connectionGeneration) return;
-    setState({ error: tr(config.lang, 'errDone', { msg: e.message }) });
+    if (generation === connectionGeneration) {
+      setState({ error: tr(config.lang, 'errDone', { msg: e.message }) });
+    }
+    return false;
   }
   await poll();
+  return true;
 });
 // タスクバーの件数バッジとトレイの表示を更新する
 ipcMain.on('badge', (_e, { overlay, count }) => {

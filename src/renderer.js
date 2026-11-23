@@ -4,6 +4,7 @@ const $ = s => document.querySelector(s);
 let lang = 'ja';
 let current = { todos: [], assigned: [], count: 0 };
 let settingsSaveError = null;
+const pendingDoneIds = new Set();
 // 選択中のフィルタ（'all' = すべて）
 const filter = { action: 'all', todoRepo: 'all', assignedRepo: 'all', assignedType: 'all' };
 
@@ -127,9 +128,28 @@ function renderTodos(todos, error) {
     const trail = el('div', 'trail');
     const due = t.action_name === 'assigned' ? dueInfoOr(t, lang) : null;
     if (due) trail.append(el('span', due.cls, due.text));
-    const btn = el('button', null, tr(lang, 'done'));
+    const btn = el('button', 'done-button');
+    btn.type = 'button';
+    btn.setAttribute('aria-label', tr(lang, 'done'));
     btn.title = lang === 'en' ? 'Mark this To-Do as done on GitLab' : 'GitLab 上で To-Do を完了にする';
-    btn.onclick = e => { e.stopPropagation(); btn.disabled = true; window.api.done(t.id); };
+    btn.innerHTML = `<svg aria-hidden="true" width="14" height="14" viewBox="0 0 16 16" fill="none"
+      stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="m3 8 3 3 7-7"/>
+    </svg>`;
+    btn.disabled = pendingDoneIds.has(t.id);
+    li.classList.toggle('done-pending', btn.disabled);
+    btn.onclick = async e => {
+      e.stopPropagation();
+      pendingDoneIds.add(t.id);
+      li.classList.add('done-pending');
+      btn.disabled = true;
+
+      const done = await window.api.done(t.id).catch(() => false);
+      pendingDoneIds.delete(t.id);
+      if (!done || current.todos.some(todo => todo.id === t.id)) {
+        renderTodos(current.todos, current.error);
+      }
+    };
     li.append(main, trail, btn);
     li.onclick = () => window.api.open(t.target_url);
     ul.append(li);

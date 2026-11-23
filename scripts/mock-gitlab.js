@@ -4,7 +4,7 @@
 //   テストから:  const mock = require('./mock-gitlab.js'); await mock.start()
 //
 // /api/v4 以外はテスト用の制御口（__ で始まる）
-//   /__fail?target=todos|issues|mergeRequests|closesIssues&status=500  API を失敗させる（status=0 で解除）
+//   /__fail?target=todos|issues|done|mergeRequests|closesIssues&status=500  API を失敗させる（status=0 で解除）
 //   /__mr-transition?event=issued|merged|closed|reopen-issue  MR と Issue の状態を進める
 //   /__assigned-total?n=150                 /issues の x-total を上書きする（n=none で省く、n なしで解除）
 //   /__assigned-count?n=150                 /issues の件数を期限なしで水増しする（n なしで解除）
@@ -141,7 +141,7 @@ function advanceMrFixture(state, event) {
 
 const initialState = () => ({
   issues: initialIssues(), mrs: initialMrs(), done: [], pushed: 0,
-  fail: { todos: 0, issues: 0, mergeRequests: 0, closesIssues: 0 },
+  fail: { todos: 0, issues: 0, done: 0, mergeRequests: 0, closesIssues: 0 },
   assignedTotal: null, hangIssues: false, issuesQuery: null,
   mrListRequests: [], closesIssueRequests: [], perIssueRequests: [],
   // ETag 検証（#20）: URL ごとの ETag と、If-None-Match が当たって 304 を返した回数
@@ -288,6 +288,7 @@ async function start({ port = 0, quiet = false } = {}) {
     if (/^\/api\/v4\/projects\/\d+\/issues\/\d+(?:\/|$)/.test(p)) state.perIssueRequests.push(p);
     const done = p.match(/^\/api\/v4\/todos\/(\d+)\/mark_as_done$/);
     if (done && req.method === 'POST') {
+      if (state.fail.done) return send(state.fail.done, { message: 'mock failure' });
       const id = Number(done[1]);
       const hit = state.todos.find(t => t.id === id);
       if (!hit) return send(404, { message: '404 Not Found' });
