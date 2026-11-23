@@ -257,13 +257,13 @@ function render(s) {
   drawBadge(s.count);
 }
 
-// ---------- バッジ描画（タスクバーのオーバーレイ & トレイ） ----------
+// ---------- バッジ描画（タスクバーのオーバーレイ） ----------
 function drawBadge(count) {
   const label = count > 99 ? '99+' : String(count);
 
   const o = document.createElement('canvas');
   o.width = o.height = 16;
-  let g = o.getContext('2d');
+  const g = o.getContext('2d');
   g.fillStyle = '#e24329';
   g.beginPath(); g.arc(8, 8, 8, 0, Math.PI * 2); g.fill();
   g.fillStyle = '#fff';
@@ -271,19 +271,7 @@ function drawBadge(count) {
   g.textAlign = 'center'; g.textBaseline = 'middle';
   g.fillText(label, 8, 8.5);
 
-  const t = document.createElement('canvas');
-  t.width = t.height = 32;
-  g = t.getContext('2d');
-  g.fillStyle = count > 0 ? '#e24329' : '#888';
-  g.beginPath(); g.arc(16, 16, 15, 0, Math.PI * 2); g.fill();
-  if (count > 0) {
-    g.fillStyle = '#fff';
-    g.font = `bold ${label.length > 2 ? 13 : label.length > 1 ? 17 : 21}px Segoe UI`;
-    g.textAlign = 'center'; g.textBaseline = 'middle';
-    g.fillText(label, 16, 17);
-  }
-
-  window.api.setBadge({ overlay: o.toDataURL(), trayIcon: t.toDataURL(), count });
+  window.api.setBadge({ overlay: o.toDataURL(), count });
 }
 
 // ---------- 設定 ----------

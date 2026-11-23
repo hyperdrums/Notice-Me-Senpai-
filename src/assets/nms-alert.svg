@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 32 32" role="img" aria-labelledby="title">
+  <title id="title">Notice-Me-Senpai — Alert</title>
+  <rect id="background" width="32" height="32" rx="6" fill="#1A1A1A"/>
+  <g id="fist">
+    <g id="knuckles" fill="#FFFFFF">
+      <path id="left-knuckle" d="M4 12L8 8H10.5L11.6 9L12.25 20L11.5 21H7.25L4 13.2Z"/>
+      <path id="center-knuckle" d="M12.1 8L15 5.2H18.3L20.4 7.7L20.05 10L19 11L17.85 20.2L17 21.1H14.45L13.75 20.35L13.35 11L12.1 9.7Z"/>
+      <path id="right-knuckle" d="M21 9.7L22.8 8.2H25L28 11.8V13L24.35 22.85L23.55 23.5H19.8L18.95 22.5Z"/>
+    </g>
+    <g id="lower-fist" fill="#FFFFFF">
+      <path id="thumb" d="M9 22.3H15.75L17.7 24.1V25.2L15.6 27.4H10.05L7.15 24.65V23.95Z"/>
+      <path id="palm" d="M19 24.7H23.8L22.45 26.9L21.65 27.4H16.8Z"/>
+    </g>
+  </g>
+  <g id="rings">
+    <defs>
+      <clipPath id="left-ring-clip"><use href="#left-knuckle"/></clipPath>
+      <clipPath id="right-ring-clip"><use href="#right-knuckle"/></clipPath>
+    </defs>
+    <g id="red-ring" clip-path="url(#left-ring-clip)">
+      <path id="red-ring-border" fill="#1A1A1A" d="M4 14.9Q7.6 11.9 12.6 12.7V17.35Q8.4 16.7 5.25 20Z"/>
+      <path id="red-ring-color" fill="#FF2442" d="M4 15.8Q7.6 12.85 12.6 13.55V16.6Q8.25 16.05 5.1 19.25Z"/>
+    </g>
+    <g id="lime-ring" clip-path="url(#right-ring-clip)">
+      <path id="lime-ring-border" fill="#1A1A1A" d="M20 12.8Q24.5 12.05 28 15.45L26.05 20.3Q23.25 17.5 19.3 18Z"/>
+      <path id="lime-ring-color" fill="#C8F000" d="M20 13.75Q24.5 13 28 16.4L26.35 19.45Q23.45 16.7 19.3 17Z"/>
+    </g>
+  </g>
+</svg>

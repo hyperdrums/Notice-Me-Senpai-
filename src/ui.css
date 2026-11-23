@@ -61,11 +61,14 @@ header .tab:is(.active, :hover, :active)::before, .chip.active::before {
   flex: 1; min-width: 0; display: flex; align-items: center; justify-content: space-between;
   gap: 10px; padding: 0 4px; -webkit-app-region: drag;
 }
+.window-brand {
+  display: flex; flex: none; align-items: center; gap: 5px;
+  color: var(--lime); pointer-events: none;
+}
 .window-label {
   pointer-events: none; white-space: nowrap;
   font: 700 11px/1.4 var(--mono-font); letter-spacing: .11em;
 }
-.window-label:first-child { color: var(--lime); }
 #build-version { color: var(--muted); overflow: hidden; text-overflow: ellipsis; }
 @media (max-width: 320px) { #build-version { display: none; } }
 header {
@@ -176,6 +179,10 @@ button:is(:hover, :active):not(:disabled, .chip) {
   --button-face: var(--accent-hover);
   --button-text: var(--text-on-accent);
   --button-edge: var(--accent-edge);
+}
+#win-close {
+  --button-face: var(--accent-danger);
+  --button-edge: color-mix(in srgb, var(--accent-danger) 70%, black);
 }
 :is(button, .chip):active:not(:disabled) { transform: translate(2px, 3px); }
 button:disabled { opacity: .6; cursor: default; }
