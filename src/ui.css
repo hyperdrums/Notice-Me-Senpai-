@@ -245,10 +245,22 @@ li.separator { padding: 4px 10px; color: var(--muted); font-size: 12px; font-wei
 li > .trail { flex-shrink: 0; text-align: right; font-size: 12px; white-space: nowrap; padding-top: 1px; }
 li > .trail:empty { display: none; }
 #mrSyncError { margin: 0; padding: 5px 10px; border-bottom: 1px solid var(--line); }
+.chip-connector {
+  position: absolute; inset: 0; width: 100%; height: 100%; z-index: 0; pointer-events: none;
+}
+.chip-connector path {
+  fill: none; stroke: var(--lime); stroke-width: 2; stroke-dasharray: 1;
+  animation: draw-chip-connector 200ms ease-out;
+}
+@keyframes draw-chip-connector {
+  from { stroke-dashoffset: 1; }
+  to { stroke-dashoffset: 0; }
+}
 .bar { display: flex; flex-wrap: wrap; gap: 8px; padding: 6px 10px 8px; border-bottom: 1px solid var(--line); }
 .bar:empty { display: none; }
 /* 選択中の絞り込みに操作色を使う。 */
 .chip {
+  position: relative; z-index: 1; /* 行の罫線より前面にある接続線の上にチップを置く（span チップは position がないと z-index が効かない）。 */
   max-width: 100%; padding: 2px 7px 3px 9px; background: var(--control-bg); box-shadow: 3px 3px 0 var(--shadow);
   color: var(--control-fg); font: 600 12px "Segoe UI", "Yu Gothic UI", sans-serif;
   letter-spacing: normal; overflow-wrap: anywhere; cursor: pointer;
@@ -304,6 +316,7 @@ input::placeholder { color: var(--muted); }
 form p.hint { margin: 0; }
 .hidden { display: none !important; }
 @media (prefers-reduced-motion: reduce) {
+  .chip-connector path { animation: none; }
   :is(button, .chip, .related-mr-link), .related-mr-link::after,
   li:not(.empty, .separator), li:not(.empty, .separator)::after { transition: none; }
   :is(button, .chip):is(:hover, :active):not(:disabled), .related-mr-link:is(:hover, :active),

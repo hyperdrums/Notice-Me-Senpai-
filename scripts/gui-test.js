@@ -113,6 +113,25 @@ async function waitUntil(label, fn, timeout = 20000) {
   }
 }
 const count = where => evl(`document.querySelectorAll(${JSON.stringify(where)}).length`);
+
+async function checkChipConnector(label, view, repos, types) {
+  const matches = `(() => {
+    const svg = document.querySelector('#${view} > svg.chip-connector[aria-hidden="true"]');
+    const path = svg?.querySelector('path');
+    if (!path?.getTotalLength() || path.getAnimations().length) return false;
+    const origin = svg.getBoundingClientRect();
+    const repo = document.querySelector('#${repos} .chip.active').getBoundingClientRect();
+    const type = document.querySelector('#${types} .chip.active').getBoundingClientRect();
+    const start = path.getPointAtLength(0);
+    const end = path.getPointAtLength(path.getTotalLength());
+    const near = (actual, expected) => Math.abs(actual - expected) < 0.5;
+    return near(start.x + origin.left, repo.left + repo.width / 2)
+      && near(end.x + origin.left, type.left + type.width / 2)
+      && near(start.y + origin.top, repo.bottom + 4)
+      && near(end.y + origin.top, type.top - 4);
+  })()`;
+  check(label, await waitFor(label, matches, 5000));
+}
 async function shot(name, dir = OUT) {
   const { data } = await cdp.send('Page.captureScreenshot', { format: 'png' });
   const file = path.join(dir, name);
@@ -266,6 +285,7 @@ async function checkConfigMessage(key, settingsKey = key) {
   // 3) モックのデータが描画される
   await waitFor('To-Do 一覧 4 件', `document.querySelectorAll('#todos li').length === 4`);
   check('To-Do タブに 4 件描画', (await count('#todos li')) === 4);
+  await checkChipConnector('Activity の接続線がアクティブなチップに合う', 'list', 'todoRepos', 'actions');
 
   const status = await evl(`document.querySelector('#status').textContent`);
   check('ヘッダに件数と更新時刻', /4 件/.test(status), status);
@@ -378,6 +398,8 @@ async function checkConfigMessage(key, settingsKey = key) {
   await checkAssignedWarning('Items と警告バッジを表示し、超過数は読み上げとツールチップで伝える', '期限超過 1 件');
   await click('.tab[data-view=assigned]');
   await waitFor('作業アイテム一覧 7 件', `document.querySelectorAll(${JSON.stringify(ROWS)}).length === 7`);
+  await checkChipConnector('Items の接続線がアクティブなチップに合う', 'assigned', 'assignedRepos', 'assignedTypes');
+  check('タブ切替で非表示の Activity のパスを空にする', (await count('#list .chip-connector path')) === 0);
   await checkDarkTheme('作業アイテム');
   const projectWarnings = await chipWarnings('#assignedRepos');
   const typeWarnings = await chipWarnings('#assignedTypes');
@@ -454,12 +476,15 @@ async function checkConfigMessage(key, settingsKey = key) {
   await checkAssignedWarning('絞り込みで超過行が隠れてもタブの警告を保つ', '期限超過 1 件');
   check('種別で絞り込んでもプロジェクトの警告を保つ', (await chipWarnings('#assignedRepos')).length === 2);
   await clickChip('#assignedRepos', 'proj-b');
+  await checkChipConnector('Items の接続線がリポジトリの選択に追従する', 'assigned', 'assignedRepos', 'assignedTypes');
   check('プロジェクトを絞ると種別の警告も選択中のプロジェクトに対応する',
     (await count('#assignedTypes .chip')) === 3 && (await chipWarnings('#assignedTypes')).length === 0
       && (await chipWarnings('#assignedRepos')).length === 2);
   await clickChip('#assignedRepos', 'proj-c');
   await waitFor('proj-c のみ', `document.querySelectorAll(${JSON.stringify(ROWS)}).length === 1`);
   check('種別が 1 つなら種別の行を隠す', (await count('#assignedTypes .chip')) === 0);
+  const noTypePath = `!document.querySelector('#assigned .chip-connector path')`;
+  check('Items の分類チップが消えるとパスを空にする', await waitFor('Items の接続線が消える', noTypePath, 5000));
   await clickChip('#assignedRepos', 'All');
   await waitFor('全件に戻す', `document.querySelectorAll(${JSON.stringify(ROWS)}).length === 7`);
   check('隠れた種別の選択は解除される', (await count('#assignedTypes .chip.active')) === 1
@@ -549,6 +574,7 @@ async function checkConfigMessage(key, settingsKey = key) {
   await clickChip('#actions', 'メンション');
   await waitFor('種別でも絞り込み', `document.querySelectorAll('#todos li').length === 1`);
   check('種別でも絞り込み', (await count('#todos li')) === 1);
+  await checkChipConnector('Activity の接続線がリポジトリと分類の選択に追従する', 'list', 'todoRepos', 'actions');
   await shot('03-filtered.png');
   await clickChip('#todoRepos', 'All');
   await clickChip('#actions', 'All');
