@@ -83,7 +83,7 @@ function rowConnectorPath(origin, chip, bar, list, row) {
   const startY = chip.bottom + 4;
   // バーと一覧が接していても、一覧の上パディング内で最上段のカードより手前に曲がる。
   const bendY = Math.min(Math.max((bar.bottom + list.top) / 2, startY + 2), row.top - 2);
-  const gutterX = row.left - 6 - origin.left;
+  const gutterX = row.left - 12 - origin.left;
   const endX = row.left - 4 - origin.left;
   const endY = row.top + row.height / 2 - origin.top;
   return `M ${startX} ${startY - origin.top} V ${bendY - origin.top} H ${gutterX} V ${endY} H ${endX}`;
