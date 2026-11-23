@@ -850,6 +850,11 @@ async function checkConfigMessage(key, settingsKey = key) {
   // 100 件のモック一覧をスクロールし、固定部分とホバー線を確認する。
   const previousView = await evl(`document.querySelector('.tab.active').dataset.view`);
   await click('.tab[data-view=assigned]');
+  const scrollbarWidth = await evl(`(() => {
+    const ul = document.querySelector('#assignedItems');
+    return ul.offsetWidth - ul.clientWidth;
+  })()`);
+  check('作業アイテム一覧のスクロールバー幅は 8px', scrollbarWidth === 8, `${scrollbarWidth}px`);
   const hoverPoint = await evl(`(() => {
     const list = document.querySelector('#assignedItems');
     list.scrollTop = 0;
