@@ -548,12 +548,38 @@ async function checkConfigMessage(key, settingsKey = key) {
   await clickChip('#actions', 'All');
   await waitFor('全件に戻す', `document.querySelectorAll('#todos li').length === 4`);
 
-  // 7) 「完了」ボタン → API を叩して一覧から消える
+  // 7) 「完了」ボタン → 押した瞬間に反応し、失敗時は復元、成功時は一覧から消える
   const head = await evl(`document.querySelector('#todos li .title').textContent`);
-  await click('#todos button');
+  const doneRow = `[...document.querySelectorAll('#todos li')].find(row =>
+    row.querySelector('.title')?.textContent === ${JSON.stringify(head)})`;
+  const openedBeforeDone = await evlMain('globalThis.__opened.length');
+  await m.fail('done', 500);
+  await click('#todos .done-button');
+  await waitFor('完了に失敗すると行とボタンが元に戻る', `(() => {
+    const row = ${doneRow};
+    const error = document.querySelector('#error');
+    return row && !row.classList.contains('done-pending') && !row.querySelector('button').disabled
+      && !error.classList.contains('hidden') && error.textContent.includes('完了処理に失敗');
+  })()`);
+  check('完了失敗時はエラーを表示して再試行できる', (await m.snapshot()).done.length === 0);
+  await m.fail('done', 0);
+
+  const pending = await evl(`(() => {
+    const row = ${doneRow};
+    const button = row.querySelector('button');
+    button.click();
+    const immediate = row.classList.contains('done-pending') && button.disabled;
+    render(current);
+    const redrawn = ${doneRow};
+    return { immediate, afterRender: redrawn !== row
+      && redrawn.classList.contains('done-pending') && redrawn.querySelector('button').disabled };
+  })()`);
+  check('完了クリック直後に行が処理中になり、ボタンが無効になる', pending.immediate);
+  check('再描画後も完了処理中の表示とボタンの無効状態を維持する', pending.afterRender);
   await waitUntil('モック側で完了', async () => (await m.snapshot()).done.length === 1);
-  await waitFor('一覧から消える', `document.querySelectorAll('#todos li').length === 3`);
+  await waitFor('一覧から消える', `!(${doneRow}) && document.querySelectorAll('#todos li').length === 3`);
   check('完了ボタンで To-Do が消える', true, `先頭: ${head.slice(0, 12)}…`);
+  check('完了ボタンは行の URL を開かない', await evlMain('globalThis.__opened.length') === openedBeforeDone);
   const snap = await m.snapshot();
   check('mark_as_done が呼ばれた', snap.done.length === 1 && snap.done[0].id === 101, JSON.stringify(snap.done));
 
@@ -770,8 +796,8 @@ async function checkConfigMessage(key, settingsKey = key) {
   await checkFixedLabels('en', 'Refresh', 'Settings');
   const tagsEn = await evl(`[...document.querySelectorAll('#todos .tag')].map(e => e.textContent).join(',')`);
   check('種別ラベルが英語', /Mentioned/.test(tagsEn) && /Assigned/.test(tagsEn) && !/メンション/.test(tagsEn), tagsEn);
-  const doneEn = await evl(`document.querySelector('#todos button').textContent`);
-  check('完了ボタンが Done', doneEn === 'Done', doneEn);
+  const doneEn = await evl(`document.querySelector('#todos button').getAttribute('aria-label')`);
+  check('完了ボタンの読み上げ名が Done', doneEn === 'Done', doneEn);
   const statusEn = await evl(`document.querySelector('#status').textContent`);
   check('ヘッダが英語', /\d+ to-dos/.test(statusEn), statusEn);
   const dueEn = await evl(`[...document.querySelectorAll('#todos .due')].map(e => e.textContent).join(' | ')`);
@@ -831,6 +857,17 @@ async function checkConfigMessage(key, settingsKey = key) {
       && narrowWarnings.length === 4 && narrowWarnings.every(chip => chip.valid), JSON.stringify(narrowTitlebar));
   await shot('items-320.png', PHASE12_OUT);
   await shot('english-320.png');
+  await click('.tab[data-view=list]');
+  check('320px でも Activity 行の完了ボタンが収まる', narrowWidth === 320 && await evl(`(() => {
+    const buttons = [...document.querySelectorAll('#todos .done-button')];
+    return buttons.length > 0 && document.documentElement.scrollWidth === document.documentElement.clientWidth
+      && buttons.every(button => {
+        const tile = button.getBoundingClientRect();
+        const row = button.closest('li').getBoundingClientRect();
+        return tile.width > 0 && row.right <= window.innerWidth && tile.right <= row.right;
+      });
+  })()`));
+  await click('.tab[data-view=assigned]');
   const overdueIssue = m.state.issues.find(i => i.id === 217);
   const overdueDate = overdueIssue.due_date;
   overdueIssue.due_date = m.state.issues.find(i => i.id === 222).due_date;

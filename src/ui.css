@@ -208,6 +208,18 @@ button:is(:hover, :active):not(:disabled, .chip) {
 :is(button, .chip):active:not(:disabled) { transform: translate(2px, 3px); }
 button:disabled { opacity: .6; cursor: default; }
 li button { align-self: center; flex-shrink: 0; }
+li .done-button {
+  display: grid; place-items: center;
+  margin-bottom: 0; padding: 5px 8px 8px 5px;
+}
+.done-pending { opacity: .55; }
+.done-pending .title { text-decoration: line-through; }
+.done-pending .done-button:disabled {
+  --button-face: var(--accent-primary);
+  --button-text: var(--text-on-accent);
+  --button-edge: var(--accent-edge);
+  opacity: 1;
+}
 .empty { padding: 24px; text-align: center; color: var(--muted); }
 li.separator { padding: 4px 10px; color: var(--muted); font-size: 12px; font-weight: 600; background: var(--band); cursor: default; }
 #assignedLimit { padding: 4px 10px; border-bottom: 1px solid var(--line); }
