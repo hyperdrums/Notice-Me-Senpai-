@@ -30,7 +30,7 @@ const chipConnectors = [
   svg.setAttribute('class', 'chip-connector');
   svg.setAttribute('aria-hidden', 'true');
   section.prepend(svg);
-  const connector = { section, svg, repos: $(repos), types: $(types), list, hoveredRow: null };
+  const connector = { section, svg, repos: $(repos), types: $(types), list, hoveredRow: null, renderedRow: null };
   const cardRow = target => target instanceof Element && target.closest('li:not(.empty, .separator)');
   list.addEventListener('mouseover', e => {
     const row = cardRow(e.target);
@@ -44,25 +44,42 @@ const chipConnectors = [
     connector.hoveredRow = null;
     scheduleChipConnectors();
   });
+  list.addEventListener('transitionend', e => {
+    if (e.target === connector.hoveredRow && e.propertyName === 'transform') scheduleChipConnectors();
+  });
   return connector;
 });
 const [todoConnector, assignedConnector] = chipConnectors;
 
-function chipConnectorPath(origin, upper, lower, toRow = false) {
-  const upperCenter = upper.left + upper.width / 2;
-  const x1 = upperCenter - origin.left;
+function chipConnectorPath(origin, upper, lower) {
+  const x1 = upper.left + upper.width / 2 - origin.left;
   const x2 = lower.left + lower.width / 2 - origin.left;
   const y1 = upper.bottom + 4 - origin.top;
   const y2 = lower.top - 4 - origin.top;
-  if (toRow && upperCenter >= lower.left && upperCenter <= lower.right) return `M ${x1} ${y1} V ${y2}`;
   return `M ${x1} ${y1} V ${(y1 + y2) / 2} H ${x2} V ${y2}`;
 }
 
-function updateChipConnectorPath(svg, target, d) {
+function rowConnectorPath(origin, chip, bar, list, row) {
+  const startX = chip.left + chip.width / 2 - origin.left;
+  const startY = chip.bottom + 4;
+  // バーと一覧が接していても、一覧の上パディング内で最上段のカードより手前に曲がる。
+  const bendY = Math.min(Math.max((bar.bottom + list.top) / 2, startY + 2), row.top - 2);
+  const gutterX = row.left - 6 - origin.left;
+  const endX = row.left - 4 - origin.left;
+  const endY = row.top + row.height / 2 - origin.top;
+  return `M ${startX} ${startY - origin.top} V ${bendY - origin.top} H ${gutterX} V ${endY} H ${endX}`;
+}
+
+function updateChipConnectorPath(svg, target, d, sameRow = false) {
   const previous = svg.querySelector(`[data-target="${target}"]`);
   if (d === (previous?.getAttribute('d') ?? '')) return;
   if (!d) {
     previous.remove();
+    return;
+  }
+  if (sameRow && previous) {
+    // ホバー移動後の座標補正では描画アニメーションを再起動しない。
+    previous.setAttribute('d', d);
     return;
   }
   // 更新した線だけを差し替えて描画アニメーションを再生する。
@@ -81,9 +98,10 @@ function scheduleChipConnectors() {
   chipConnectorFrame = requestAnimationFrame(() => {
     chipConnectorFrame = null;
     for (const connector of chipConnectors) {
-      const { section, svg, repos, types } = connector;
+      const { section, svg, repos, types, list } = connector;
       if (section.classList.contains('hidden')) {
         connector.hoveredRow = null;
+        connector.renderedRow = null;
         svg.replaceChildren();
         continue;
       }
@@ -92,7 +110,11 @@ function scheduleChipConnectors() {
       const row = connector.hoveredRow;
       const origin = svg.getBoundingClientRect();
       updateChipConnectorPath(svg, 'type', repo && type ? chipConnectorPath(origin, repo.getBoundingClientRect(), type) : '');
-      updateChipConnectorPath(svg, 'row', type && row ? chipConnectorPath(origin, type, row.getBoundingClientRect(), true) : '');
+      const rowPath = type && row
+        ? rowConnectorPath(origin, type, types.getBoundingClientRect(), list.getBoundingClientRect(), row.getBoundingClientRect())
+        : '';
+      updateChipConnectorPath(svg, 'row', rowPath, row === connector.renderedRow);
+      connector.renderedRow = row;
     }
   });
 }
