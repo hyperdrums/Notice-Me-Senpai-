@@ -341,12 +341,15 @@ async function checkConfigMessage(key, settingsKey = key) {
   })`);
   const titlebarState = `(() => {
     const drag = document.querySelector('.window-drag');
+    const tile = drag.querySelector('.window-brand svg.window-brand-tile');
+    const tileRect = tile?.getBoundingClientRect();
     const [name, build] = drag.querySelectorAll('.window-label');
     const rect = drag.getBoundingClientRect();
     const [nameRect, buildRect] = [name, build].map(label => label.getBoundingClientRect());
     const style = node => getComputedStyle(node);
     return {
       name: name.textContent, build: build.textContent, buildVisible: buildRect.width > 0,
+      tileVisible: tileRect?.width === 18 && tileRect.height === 18 && tile.getAttribute('aria-hidden') === 'true',
       fits: nameRect.width > 0 && nameRect.left >= rect.left && nameRect.right <= rect.right
         && (!buildRect.width || (buildRect.left > nameRect.right && buildRect.right <= rect.right))
         && document.querySelector('#win-minimize').getBoundingClientRect().left > rect.right,
@@ -357,7 +360,7 @@ async function checkConfigMessage(key, settingsKey = key) {
   await waitFor('ビルドバージョンを取得', `document.querySelector('#build-version').textContent.length > 0`);
   const normalTitlebar = await evl(titlebarState);
   check('タイトルバーに NMS と package.json の BUILD を表示し、ドラッグできる',
-    normalTitlebar.name === '/// NMS' && normalTitlebar.build === BUILD_LABEL && normalTitlebar.buildVisible
+    normalTitlebar.name === 'NMS' && normalTitlebar.tileVisible && normalTitlebar.build === BUILD_LABEL && normalTitlebar.buildVisible
       && normalTitlebar.fits && normalTitlebar.drag === 'drag' && normalTitlebar.pointerEvents.every(value => value === 'none'),
     JSON.stringify(normalTitlebar));
   check('Activity の chip に Items の警告を混ぜない', (await count('#list .chip .warning-count')) === 0);
@@ -823,7 +826,7 @@ async function checkConfigMessage(key, settingsKey = key) {
   const narrowTitlebar = await evl(titlebarState);
   const narrowWarnings = await chipWarnings();
   check('320px では NMS を残して BUILD を省略し、横にあふれない',
-    narrowWidth === 320 && narrowTitlebar.name === '/// NMS' && !narrowTitlebar.buildVisible && narrowTitlebar.fits
+    narrowWidth === 320 && narrowTitlebar.name === 'NMS' && narrowTitlebar.tileVisible && !narrowTitlebar.buildVisible && narrowTitlebar.fits
       && await evl('document.documentElement.scrollWidth === document.documentElement.clientWidth')
       && narrowWarnings.length === 4 && narrowWarnings.every(chip => chip.valid), JSON.stringify(narrowTitlebar));
   await shot('items-320.png', PHASE12_OUT);

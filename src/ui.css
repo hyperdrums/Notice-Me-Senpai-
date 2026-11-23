@@ -63,12 +63,17 @@ header .tab:is(.active, :hover, :active)::before, .chip.active::before {
 }
 .window-brand {
   display: flex; flex: none; align-items: center; gap: 5px;
-  color: var(--lime); pointer-events: none;
+  color: var(--text); pointer-events: none;
+}
+.window-brand-tile {
+  background: var(--lime); fill: var(--text-on-accent);
+  clip-path: polygon(0 0, 100% 0, 100% calc(100% - 5px), calc(100% - 5px) 100%, 0 100%);
 }
 .window-label {
   pointer-events: none; white-space: nowrap;
   font: 700 11px/1.4 var(--mono-font); letter-spacing: .11em;
 }
+.window-brand .window-label { font-style: italic; font-weight: 800; }
 #build-version { color: var(--muted); overflow: hidden; text-overflow: ellipsis; }
 @media (max-width: 320px) { #build-version { display: none; } }
 header {
