@@ -288,35 +288,47 @@ async function checkConfigMessage(key, settingsKey = key) {
   await checkChipConnector('Activity の接続線がアクティブなチップに合う', 'list', 'todoRepos', 'actions');
 
   const activityPaths = `document.querySelectorAll('#list > .chip-connector > path')`;
-  const activityRow = `document.querySelector('#todos > li:not(.empty, .separator)')`;
-  const hoverPoint = await evl(`(() => {
-    window.__activityRepoPath = ${activityPaths}[0];
-    const row = ${activityRow}.getBoundingClientRect();
-    return { x: row.left + row.width / 2, y: row.top + row.height / 2 };
-  })()`);
-  await cdp.send('Input.dispatchMouseEvent', { type: 'mouseMoved', ...hoverPoint });
-  const hoverLineMatches = `(() => {
-    const [repoPath, rowPath] = ${activityPaths};
-    if (repoPath !== window.__activityRepoPath || !rowPath?.getTotalLength()) return false;
-    const origin = rowPath.ownerSVGElement.getBoundingClientRect();
-    const chip = document.querySelector('#actions .chip.active').getBoundingClientRect();
-    const row = ${activityRow}.getBoundingClientRect();
-    const start = rowPath.getPointAtLength(0);
-    const end = rowPath.getPointAtLength(rowPath.getTotalLength());
-    const near = (actual, expected) => Math.abs(actual - expected) < 0.5;
-    const chipX = chip.left + chip.width / 2;
-    const endX = end.x + origin.left;
-    return near(start.x + origin.left, chipX) && near(start.y + origin.top, chip.bottom + 4)
-      && near(endX, chipX) && endX >= row.left && endX <= row.right
-      && near(end.y + origin.top, row.top - 4);
-  })()`;
-  check('Activity のホバー線が分類チップから行の上端へ垂直に伸びる',
-    await waitFor('Activity のホバー線', hoverLineMatches, 5000));
-  await cdp.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 0, y: hoverPoint.y });
+  const activityRows = `document.querySelectorAll('#todos > li:not(.empty, .separator)')`;
+  await evl(`window.__activityRepoPath = ${activityPaths}[0]`);
+  for (const index of [0, 2]) {
+    const hoverPoint = await evl(`(() => {
+      const row = ${activityRows}[${index}].getBoundingClientRect();
+      return { x: row.left + row.width / 2, y: row.top + row.height / 2 };
+    })()`);
+    await cdp.send('Input.dispatchMouseEvent', { type: 'mouseMoved', ...hoverPoint });
+    const hoverLineMatches = `(() => {
+      const [repoPath, rowPath] = ${activityPaths};
+      if (repoPath !== window.__activityRepoPath || rowPath?.dataset.target !== 'row'
+        || rowPath.getAttribute('pathLength') !== '1' || rowPath.getAnimations().length) return false;
+      const origin = rowPath.ownerSVGElement.getBoundingClientRect();
+      const chip = document.querySelector('#actions .chip.active').getBoundingClientRect();
+      const cards = Array.from(${activityRows}, card => card.getBoundingClientRect());
+      const row = cards[${index}];
+      const d = rowPath.getAttribute('d');
+      if (d.replace(/[^A-Z]/g, '') !== 'MVHVH') return false;
+      const [x, y, bendY, gutterX, endY, endX] = d.split(' ').filter(token => !'MVH'.includes(token)).map(Number);
+      const points = [[x, y], [x, bendY], [gutterX, bendY], [gutterX, endY], [endX, endY]];
+      const near = (actual, expected) => Math.abs(actual - expected) < 0.5;
+      const clearsCards = points.slice(1).every(([x2, y2], i) => {
+        const [x1, y1] = points[i];
+        return cards.every(card => Math.max(x1, x2) + origin.left + 1 <= card.left
+          || Math.max(y1, y2) + origin.top + 1 <= card.top
+          || Math.min(y1, y2) + origin.top - 1 >= card.bottom);
+      });
+      return near(x + origin.left, chip.left + chip.width / 2) && near(y + origin.top, chip.bottom + 4)
+        && bendY > y && endY > bendY && gutterX >= 1
+        && near(gutterX + origin.left, row.left - 6) && near(endX + origin.left, row.left - 4)
+        && near(endY + origin.top, row.top + row.height / 2) && clearsCards;
+    })()`;
+    const label = `Activity のホバー線がカードを避けて ${index + 1} 行目の左辺中央に伸びる`;
+    check(label, await waitFor(label, hoverLineMatches, 5000));
+  }
+  await cdp.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 0, y: 0 });
   check('Activity のホバー解除では分類チップまでの線が残る',
     await waitFor('Activity のホバー解除', `(() => {
       const paths = ${activityPaths};
-      return paths.length === 1 && paths[0] === window.__activityRepoPath;
+      return paths.length === 1 && paths[0] === window.__activityRepoPath
+        && Array.from(${activityRows}).every(row => !row.getAnimations({ subtree: true }).length);
     })()`, 5000));
 
   const status = await evl(`document.querySelector('#status').textContent`);
