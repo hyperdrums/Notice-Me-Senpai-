@@ -148,6 +148,32 @@ async function checkChipConnector(label, view, repos, types) {
   check(label, await waitFor(label, matches, 5000));
 }
 
+function checkConnectorSegments(path, chips) {
+  const origin = path.ownerSVGElement.getBoundingClientRect();
+  const tokens = path.getAttribute('d').split(/\s+/);
+  const obstacles = chips.map(chip => ({ label: chip.textContent, rect: chip.getBoundingClientRect() }));
+  const halfStroke = parseFloat(getComputedStyle(path).strokeWidth) / 2;
+  const collisions = [];
+  let clipped = false;
+  let x = origin.left + Number(tokens[1]);
+  let y = origin.top + Number(tokens[2]);
+  for (let i = 3; i < tokens.length; i += 2) {
+    const nextX = tokens[i] === 'H' ? origin.left + Number(tokens[i + 1]) : x;
+    const nextY = tokens[i] === 'V' ? origin.top + Number(tokens[i + 1]) : y;
+    const left = Math.min(x, nextX) - halfStroke;
+    const right = Math.max(x, nextX) + halfStroke;
+    const top = Math.min(y, nextY) - halfStroke;
+    const bottom = Math.max(y, nextY) + halfStroke;
+    clipped ||= left < origin.left || right > origin.right || top < origin.top || bottom > origin.bottom;
+    for (const { label, rect } of obstacles) {
+      if (left <= rect.right && right >= rect.left && top <= rect.bottom && bottom >= rect.top) collisions.push(label);
+    }
+    x = nextX;
+    y = nextY;
+  }
+  return { collisions, clipped };
+}
+
 async function checkWrappedChipConnector() {
   await checkChipConnector('折り返し後も Items の接続線がアクティブなチップに合う', 'assigned', 'assignedRepos', 'assignedTypes');
   const route = await evl(`(() => {
@@ -171,34 +197,59 @@ async function checkWrappedChipConnector() {
       'V', bar.bottom + 4 - origin.top, 'H', x2 - origin.left, 'V', type.top - 4 - origin.top];
     const followsLane = tokens.length === expected.length && expected.every((value, i) =>
       typeof value === 'string' ? tokens[i] === value : Math.abs(Number(tokens[i]) - value) < 0.5);
-    const collisions = [];
-    let clipped = false;
-    if (followsLane) {
-      const chips = [...document.querySelectorAll('#assigned .bar .chip')].filter(chip => chip !== upper && chip !== lower);
-      const obstacles = chips.map(chip => ({ label: chip.textContent, rect: chip.getBoundingClientRect() }));
-      const halfStroke = parseFloat(getComputedStyle(path).strokeWidth) / 2;
-      let x = origin.left + Number(tokens[1]);
-      let y = origin.top + Number(tokens[2]);
-      for (let i = 3; i < tokens.length; i += 2) {
-        const nextX = tokens[i] === 'H' ? origin.left + Number(tokens[i + 1]) : x;
-        const nextY = tokens[i] === 'V' ? origin.top + Number(tokens[i + 1]) : y;
-        const left = Math.min(x, nextX) - halfStroke;
-        const right = Math.max(x, nextX) + halfStroke;
-        const top = Math.min(y, nextY) - halfStroke;
-        const bottom = Math.max(y, nextY) + halfStroke;
-        clipped ||= left < origin.left || right > origin.right || top < origin.top || bottom > origin.bottom;
-        for (const { label, rect } of obstacles) {
-          if (left <= rect.right && right >= rect.left && top <= rect.bottom && bottom >= rect.top) collisions.push(label);
-        }
-        x = nextX;
-        y = nextY;
-      }
-    }
-    return { twoRows, blocksDirectPath, followsLane, collisions, clipped };
+    const chips = [...document.querySelectorAll('#assigned .bar .chip')].filter(chip => chip !== upper && chip !== lower);
+    return { twoRows, blocksDirectPath, followsLane, ...(${checkConnectorSegments})(path, chips) };
   })()`);
   check('320px ではリポジトリが 2 行になり、直下に別のチップがある', route.twoRows && route.blocksDirectPath);
   check('迂回線が左レーンを通り、チップと交差せず SVG 内に収まる',
     route.followsLane && route.collisions.length === 0 && !route.clipped, JSON.stringify(route));
+}
+
+async function checkRepoRowConnector(rowSelector, wrapped) {
+  const pathSelector = '#assigned .chip-connector path[data-target="row"]';
+  await waitFor('proj-c のカードだけが表示される', `document.querySelectorAll('${rowSelector}').length === 1`);
+  const point = await evl(`(() => {
+    const row = document.querySelector('${rowSelector}').getBoundingClientRect();
+    return { x: row.left + row.width / 2, y: row.top + row.height / 2 };
+  })()`);
+  await cdp.send('Input.dispatchMouseEvent', { type: 'mouseMoved', ...point });
+  await waitFor('proj-c のホバー線が表示される', `(() => {
+    const path = document.querySelector('${pathSelector}');
+    return path?.getTotalLength() > 0 && path.getAnimations().length === 0;
+  })()`, 5000);
+  const route = await evl(`(() => {
+    const path = document.querySelector('${pathSelector}');
+    const row = document.querySelector('${rowSelector}').getBoundingClientRect();
+    const repos = document.querySelector('#assignedRepos');
+    const bar = repos.getBoundingClientRect();
+    const activeRepo = repos.querySelector('.chip.active[data-value="other/proj-c"]');
+    const repo = activeRepo.getBoundingClientRect();
+    const chips = [...document.querySelectorAll('#assigned .bar .chip')].filter(chip => chip !== activeRepo);
+    const origin = path.ownerSVGElement.getBoundingClientRect();
+    const start = path.getPointAtLength(0);
+    const end = path.getPointAtLength(path.getTotalLength());
+    const near = (actual, expected) => Math.abs(actual - expected) < 0.5;
+    const d = path.getAttribute('d');
+    const tokens = d.split(/\\s+/);
+    const commands = d.replace(/[^A-Z]/g, '');
+    const followsLane = commands === 'MVHVHVH'
+      && near(Number(tokens[4]) + origin.top, repo.bottom + 8)
+      && near(Number(tokens[6]) + origin.left, bar.left + 4);
+    return {
+      typeHidden: getComputedStyle(document.querySelector('#assignedTypes')).display === 'none'
+        && !path.ownerSVGElement.querySelector('[data-target="type"]'),
+      startsAtRepo: near(start.x + origin.left, repo.left + repo.width / 2) && near(start.y + origin.top, repo.bottom + 4),
+      endsAtRow: near(end.x + origin.left, row.left - 4) && near(end.y + origin.top, row.top + row.height / 2),
+      direct: commands === 'MVHVH',
+      followsLane,
+      ...(${checkConnectorSegments})(path, chips),
+    };
+  })()`);
+  check(wrapped ? '折り返し時は左レーンを通って proj-c からカードへつなぐ' : '分類バー非表示時は proj-c からカードへ直接つなぐ',
+    route.typeHidden && route.startsAtRepo && route.endsAtRow && (wrapped ? route.followsLane : route.direct)
+      && route.collisions.length === 0 && !route.clipped, JSON.stringify(route));
+  await cdp.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 0, y: 0 });
+  await waitFor('ホバー解除で proj-c の接続線が消える', `!document.querySelector('${pathSelector}')`, 5000);
 }
 const swipeFinished = `!document.querySelector('section:is(.enter-right, .enter-left)')`;
 
@@ -688,6 +739,7 @@ async function checkConfigMessage(key, settingsKey = key) {
   check('種別が 1 つなら種別の行を隠す', (await count('#assignedTypes .chip')) === 0);
   const noTypePath = `!document.querySelector('#assigned .chip-connector path')`;
   check('Items の分類チップが消えるとパスを空にする', await waitFor('Items の接続線が消える', noTypePath, 5000));
+  await checkRepoRowConnector(ROWS, false);
   await clickChip('#assignedRepos', 'All');
   await waitFor('全件に戻す', `document.querySelectorAll(${JSON.stringify(ROWS)}).length === 7`);
   check('隠れた種別の選択は解除される', (await count('#assignedTypes .chip.active')) === 1
@@ -1165,6 +1217,9 @@ async function checkConfigMessage(key, settingsKey = key) {
   const wrapChip = `#assignedRepos .chip[data-value="${wrapProject}"]`;
   await waitFor('折り返し用のリポジトリチップが表示される', `document.querySelector(${JSON.stringify(wrapChip)})`);
   await checkWrappedChipConnector();
+  await clickChip('#assignedRepos', 'proj-c');
+  await checkRepoRowConnector(ROWS, true);
+  await clickChip('#assignedRepos', 'All');
   m.state.issues.pop();
   await evl('window.api.refresh()');
   await waitFor('折り返し用のリポジトリチップが消える', `!document.querySelector(${JSON.stringify(wrapChip)})`);
