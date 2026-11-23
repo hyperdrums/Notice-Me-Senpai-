@@ -9,10 +9,12 @@
 // ウィンドウが実際に映るので、実行中は画面に注意すること。
 
 const { spawn } = require('node:child_process');
+const { once } = require('node:events');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const mock = require('./mock-gitlab.js');
+const { tr } = require('../src/lib.js');
 
 const REPO = path.join(__dirname, '..');
 const OUT = path.join(REPO, 'dist', 'gui-test');
@@ -195,24 +197,7 @@ async function checkDarkTheme(label) {
 let app = null;
 let m = null;
 
-(async () => {
-  fs.mkdirSync(OUT, { recursive: true });
-  fs.mkdirSync(PHASE12_OUT, { recursive: true });
-  m = await mock.start({ quiet: true });
-  const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'nms-gui-profile-'));
-
-  // 1) 設定を DPAPI で書き込む（Electron を一瞬走らせる）
-  await new Promise((resolve, reject) => {
-    const p = spawn(ELECTRON, [
-      path.join('scripts', 'mock-config.js'),
-      `--user-data-dir=${profile}`, `--mock-url=${m.url}`, `--mock-token=${m.token}`,
-    ], { cwd: REPO, stdio: 'ignore' });
-    p.on('error', reject);
-    p.on('exit', code => code === 0 ? resolve() : reject(new Error(`mock-config exit ${code}`)));
-  });
-  console.log(`設定を書き込み: ${m.url}\n`);
-
-  // 2) アプリを起動（DevTools プロトコル有効）
+async function startApp(profile) {
   app = spawn(ELECTRON, ['.', `--user-data-dir=${profile}`, `--remote-debugging-port=${CDP_PORT}`, `--inspect=${INSPECT_PORT}`],
     { cwd: REPO, stdio: 'ignore' });
 
@@ -231,6 +216,50 @@ let m = null;
   const [mainTarget] = await json(`http://127.0.0.1:${INSPECT_PORT}/json/list`);
   mainCdp = await connect(mainTarget.webSocketDebuggerUrl);
   await mainCdp.send('Runtime.enable');
+}
+
+async function stopApp() {
+  cdp?.close();
+  mainCdp?.close();
+  cdp = mainCdp = null;
+  if (app?.exitCode === null && app.signalCode === null) {
+    const exited = once(app, 'exit');
+    app.kill();
+    await exited;
+  }
+  app = null;
+}
+
+async function checkConfigMessage(key, settingsKey = key) {
+  const message = id => `document.querySelector(${JSON.stringify('#' + id)}).textContent`;
+  await waitFor('設定タブが開く', `!document.querySelector('#settings').classList.contains('hidden') && ${message('error')}`);
+  const lang = await evl('document.documentElement.lang');
+  check(`起動時の設定エラー (${key})`, (await evl(message('error'))) === tr(lang, key)
+    && (await evl(message('settingsMessage'))) === (settingsKey ? tr(lang, settingsKey) : ''));
+  await click('.tab[data-view=list]');
+  check(`一覧タブに案内を表示 (${key})`, await evl(`getComputedStyle(document.querySelector('#error')).display !== 'none'`));
+  await click('.tab[data-view=settings]');
+}
+
+(async () => {
+  fs.mkdirSync(OUT, { recursive: true });
+  fs.mkdirSync(PHASE12_OUT, { recursive: true });
+  m = await mock.start({ quiet: true });
+  const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'nms-gui-profile-'));
+
+  // 1) 設定を DPAPI で書き込む（Electron を一瞬走らせる）
+  await new Promise((resolve, reject) => {
+    const p = spawn(ELECTRON, [
+      path.join('scripts', 'mock-config.js'),
+      `--user-data-dir=${profile}`, `--mock-url=${m.url}`, `--mock-token=${m.token}`,
+    ], { cwd: REPO, stdio: 'ignore' });
+    p.on('error', reject);
+    p.on('exit', code => code === 0 ? resolve() : reject(new Error(`mock-config exit ${code}`)));
+  });
+  console.log(`設定を書き込み: ${m.url}\n`);
+
+  // 2) アプリを起動（DevTools プロトコル有効）
+  await startApp(profile);
   if (!(await evlMain(STUB_MAIN))) throw new Error('main プロセスの差し替えに失敗');
   console.log('アプリ起動，画面に接続');
 
@@ -828,15 +857,68 @@ let m = null;
   await evl(`${sel}.value = 'ja'; document.querySelector('#form').requestSubmit();`);
   await waitFor('日本語に戻る', `document.documentElement.lang === 'ja'`, 20000);
   check('日本語に戻せる', (await evl(`document.querySelector('#refresh').getAttribute('aria-label')`)) === '更新');
+
+  await stopApp();
+  const configFile = path.join(profile, 'config.json');
+  const previous = JSON.parse(fs.readFileSync(configFile, 'utf8'));
+  fs.unlinkSync(configFile);
+  await startApp(profile);
+  await checkConfigMessage('errNotConfigured', null);
+  await stopApp();
+
+  fs.writeFileSync(configFile, '{ invalid');
+  await startApp(profile);
+  await checkConfigMessage('errConfigRead');
+  await stopApp();
+
+  const broken = JSON.stringify({ ...previous, lang: 'en', tokenEnc: Buffer.from('invalid ciphertext').toString('base64') });
+  fs.writeFileSync(configFile, broken);
+  await startApp(profile);
+  await waitFor('保存済みの表示言語を適用する', `document.documentElement.lang === 'en'`);
+  await checkConfigMessage('errTokenDecrypt');
+  check('復号に失敗しても URL、取得間隔、表示言語を維持する', await evl(`(() => {
+    const f = document.querySelector('#form');
+    return f.baseUrl.value === ${JSON.stringify(previous.baseUrl)}
+      && Number(f.intervalSec.value) === ${previous.intervalSec} && f.elements.lang.value === 'en';
+  })()`));
+  check('設定タブに復号エラーを一つだけ表示する', await evl(`
+    getComputedStyle(document.querySelector('#settingsMessage')).display !== 'none'
+      && getComputedStyle(document.querySelector('#error')).display === 'none'
+  `));
+
+  const submit = `document.querySelector('#form').requestSubmit()`;
+  const saveReady = `!document.querySelector('#form button[type=submit]').disabled`;
+  await evl(submit);
+  await waitFor('空欄での保存が完了する', saveReady);
+  check('空欄で保存しても暗号化データと再入力の案内を維持する',
+    fs.readFileSync(configFile, 'utf8') === broken
+      && (await evl(`document.querySelector('#settingsMessage').textContent`)) === tr('en', 'errTokenDecrypt'));
+
+  await evlMain(`(() => {
+    const { safeStorage } = process.mainModule.require('electron');
+    globalThis.__encryptionAvailable = safeStorage.isAsyncEncryptionAvailable;
+    safeStorage.isAsyncEncryptionAvailable = async () => false;
+  })()`);
+  await evl(`document.querySelector('#form').token.value = ${JSON.stringify(m.token)}; ${submit}`);
+  const settingsText = `document.querySelector('#settingsMessage').textContent`;
+  await waitFor('暗号化機能を利用できない案内を表示する', `${settingsText} === ${JSON.stringify(tr('en', 'errEncryptionUnavailable'))}`);
+  check('暗号化を利用できない場合は設定を保存せずに案内する',
+    (await evl(`Boolean(document.querySelector('#form').token.value)`)) && fs.readFileSync(configFile, 'utf8') === broken);
+  await evlMain(`process.mainModule.require('electron').safeStorage.isAsyncEncryptionAvailable = globalThis.__encryptionAvailable; true`);
+  await evl(submit);
+  await waitFor('トークンの再入力で取得が再開する', `
+    !${settingsText} && document.querySelector('#error').classList.contains('hidden')
+      && document.querySelector('#status').textContent.includes('to-dos')
+  `);
+  check('トークンを再入力して保存すると案内が消え、暗号化データが更新される',
+    JSON.parse(fs.readFileSync(configFile, 'utf8')).tokenEnc !== JSON.parse(broken).tokenEnc);
 })().catch(e => {
   check(`例外: ${e.message}`, false);
 }).finally(async () => {
   const failed = results.filter(r => !r.ok);
   console.log(`\n${results.length - failed.length} passed, ${failed.length} failed`);
   console.log(`screenshots: ${OUT}`);
-  try { cdp?.close(); } catch {}
-  try { mainCdp?.close(); } catch {}
-  if (app) app.kill();
+  await stopApp();
   if (m) await m.close();
   process.exit(failed.length ? 1 : 0);
 });

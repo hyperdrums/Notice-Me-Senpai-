@@ -3,6 +3,7 @@ const $ = s => document.querySelector(s);
 // ago / dueInfo / todoRepo / issueRepo / shortName / tr / actionLabel などは lib.js にある（Node でテストできる）
 let lang = 'ja';
 let current = { todos: [], assigned: [], count: 0 };
+let settingsSaveError = null;
 // 選択中のフィルタ（'all' = すべて）
 const filter = { action: 'all', todoRepo: 'all', assignedRepo: 'all', assignedType: 'all' };
 
@@ -245,6 +246,7 @@ function render(s) {
   const message = [s.error, s.assignedError].filter(Boolean).join(' / ');
   $('#error').classList.toggle('hidden', !message);
   $('#error').textContent = message;
+  renderSettingsMessage();
   const status = $('#status');
   status.textContent = s.loading ? tr(lang, 'loading') : '';
   if (!s.loading && s.updatedAt) {
@@ -275,6 +277,14 @@ function drawBadge(count) {
 }
 
 // ---------- 設定 ----------
+function renderSettingsMessage() {
+  const key = settingsSaveError || current.settingsMessage;
+  const message = key ? tr(lang, key) : '';
+  const banner = $('#settingsMessage');
+  banner.classList.toggle('hidden', !message);
+  if (banner.textContent !== message) banner.textContent = message;
+}
+
 async function loadForm() {
   const c = await window.api.getConfig();
   const next = LANGS.includes(c.lang) ? c.lang : 'ja';
@@ -295,19 +305,32 @@ async function loadForm() {
 $('#form').onsubmit = async e => {
   e.preventDefault();
   const f = e.target;
-  await window.api.saveConfig({
-    baseUrl: f.baseUrl.value,
-    token: f.token.value,
-    intervalSec: f.intervalSec.value,
-    notify: f.notify.checked,
-    autoStart: f.autoStart.checked,
-    insecure: f.insecure.checked,
-    lang: f.elements.lang.value,
-  });
+  const button = f.querySelector('button[type=submit]');
+  if (button.disabled) return;
+  button.disabled = true;
+  $('#saved').textContent = '';
+  try {
+    const { error } = await window.api.saveConfig({
+      baseUrl: f.baseUrl.value,
+      token: f.token.value,
+      intervalSec: f.intervalSec.value,
+      notify: f.notify.checked,
+      autoStart: f.autoStart.checked,
+      insecure: f.insecure.checked,
+      lang: f.elements.lang.value,
+    });
+    settingsSaveError = error;
+  } catch {
+    settingsSaveError = 'errConfigSave';
+  } finally {
+    button.disabled = false;
+    renderSettingsMessage();
+  }
+  if (settingsSaveError) return;
   f.token.value = '';
+  await loadForm();
   $('#saved').textContent = tr(lang, 'saved');
   setTimeout(() => ($('#saved').textContent = ''), 2000);
-  loadForm();
 };
 
 $('#refresh').onclick = () => window.api.refresh();
