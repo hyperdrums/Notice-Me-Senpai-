@@ -21,31 +21,58 @@ document.querySelectorAll('.tab').forEach(tab => {
 // ---------- チップの接続線 ----------
 const svgNS = 'http://www.w3.org/2000/svg';
 const chipConnectors = [
-  ['#list', '#todoRepos', '#actions'],
-  ['#assigned', '#assignedRepos', '#assignedTypes'],
-].map(([view, repos, types]) => {
+  ['#list', '#todoRepos', '#actions', '#todos'],
+  ['#assigned', '#assignedRepos', '#assignedTypes', '#assignedItems'],
+].map(([view, repos, types, rows]) => {
   const section = $(view);
+  const list = $(rows);
   const svg = document.createElementNS(svgNS, 'svg');
   svg.setAttribute('class', 'chip-connector');
   svg.setAttribute('aria-hidden', 'true');
   section.prepend(svg);
-  return { section, svg, repos: $(repos), types: $(types) };
+  const connector = { section, svg, repos: $(repos), types: $(types), list, hoveredRow: null };
+  const cardRow = target => target instanceof Element && target.closest('li:not(.empty, .separator)');
+  list.addEventListener('mouseover', e => {
+    const row = cardRow(e.target);
+    if (row?.parentElement !== list || row === cardRow(e.relatedTarget)) return;
+    connector.hoveredRow = row;
+    scheduleChipConnectors();
+  });
+  list.addEventListener('mouseout', e => {
+    const row = connector.hoveredRow;
+    if (!row || row !== cardRow(e.target) || row === cardRow(e.relatedTarget)) return;
+    connector.hoveredRow = null;
+    scheduleChipConnectors();
+  });
+  return connector;
 });
+const [todoConnector, assignedConnector] = chipConnectors;
 
-function chipConnectorPath({ section, svg, repos, types }) {
-  if (section.classList.contains('hidden')) return '';
-  const repo = repos.querySelector('.chip.active');
-  const type = types.querySelector('.chip.active');
-  if (!repo || !type) return '';
-
-  const origin = svg.getBoundingClientRect();
-  const upper = repo.getBoundingClientRect();
-  const lower = type.getBoundingClientRect();
-  const x1 = upper.left + upper.width / 2 - origin.left;
+function chipConnectorPath(origin, upper, lower, toRow = false) {
+  const upperCenter = upper.left + upper.width / 2;
+  const x1 = upperCenter - origin.left;
   const x2 = lower.left + lower.width / 2 - origin.left;
   const y1 = upper.bottom + 4 - origin.top;
   const y2 = lower.top - 4 - origin.top;
+  if (toRow && upperCenter >= lower.left && upperCenter <= lower.right) return `M ${x1} ${y1} V ${y2}`;
   return `M ${x1} ${y1} V ${(y1 + y2) / 2} H ${x2} V ${y2}`;
+}
+
+function updateChipConnectorPath(svg, target, d) {
+  const previous = svg.querySelector(`[data-target="${target}"]`);
+  if (d === (previous?.getAttribute('d') ?? '')) return;
+  if (!d) {
+    previous.remove();
+    return;
+  }
+  // 更新した線だけを差し替えて描画アニメーションを再生する。
+  const path = document.createElementNS(svgNS, 'path');
+  path.dataset.target = target;
+  path.setAttribute('d', d);
+  path.setAttribute('pathLength', '1');
+  if (previous) previous.replaceWith(path);
+  else if (target === 'type') svg.prepend(path);
+  else svg.append(path);
 }
 
 let chipConnectorFrame = null;
@@ -54,18 +81,18 @@ function scheduleChipConnectors() {
   chipConnectorFrame = requestAnimationFrame(() => {
     chipConnectorFrame = null;
     for (const connector of chipConnectors) {
-      const { svg } = connector;
-      const d = chipConnectorPath(connector);
-      if (d === (svg.firstElementChild?.getAttribute('d') ?? '')) continue;
-      if (!d) {
+      const { section, svg, repos, types } = connector;
+      if (section.classList.contains('hidden')) {
+        connector.hoveredRow = null;
         svg.replaceChildren();
         continue;
       }
-      // パスが変わった時だけ差し替え、描画アニメーションを再生する。
-      const path = document.createElementNS(svgNS, 'path');
-      path.setAttribute('d', d);
-      path.setAttribute('pathLength', '1');
-      svg.replaceChildren(path);
+      const repo = repos.querySelector('.chip.active');
+      const type = types.querySelector('.chip.active')?.getBoundingClientRect();
+      const row = connector.hoveredRow;
+      const origin = svg.getBoundingClientRect();
+      updateChipConnectorPath(svg, 'type', repo && type ? chipConnectorPath(origin, repo.getBoundingClientRect(), type) : '');
+      updateChipConnectorPath(svg, 'row', type && row ? chipConnectorPath(origin, type, row.getBoundingClientRect(), true) : '');
     }
   });
 }
@@ -164,7 +191,8 @@ function renderTodos(todos, error) {
   renderChips($('#actions'), 'action', countBy(inRepo, actionOf));
   const shown = inRepo.filter(t => filter.action === 'all' || actionOf(t) === filter.action);
 
-  const ul = $('#todos');
+  const ul = todoConnector.list;
+  todoConnector.hoveredRow = null;
   ul.replaceChildren();
   if (!shown.length && !error) ul.append(el('li', 'empty', tr(lang, 'emptyTodos')));
   for (const t of shown) {
@@ -309,7 +337,8 @@ function renderAssigned(items, limited, error, relatedMrsByIssue = {}) {
 
   const { dated, undated } = splitByDue(shown);
   const row = i => assignedRow(i, relatedMrsByIssue);
-  replaceAssignedRows($('#assignedItems'), [
+  assignedConnector.hoveredRow = null;
+  replaceAssignedRows(assignedConnector.list, [
     ...(!shown.length && !error ? [el('li', 'empty', tr(lang, 'emptyAssigned'))] : []),
     ...dated.map(row),
     ...(undated.length ? [el('li', 'separator', tr(lang, 'noDueDate')), ...undated.map(row)] : []),

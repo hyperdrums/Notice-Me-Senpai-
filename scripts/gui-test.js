@@ -287,6 +287,38 @@ async function checkConfigMessage(key, settingsKey = key) {
   check('To-Do タブに 4 件描画', (await count('#todos li')) === 4);
   await checkChipConnector('Activity の接続線がアクティブなチップに合う', 'list', 'todoRepos', 'actions');
 
+  const activityPaths = `document.querySelectorAll('#list > .chip-connector > path')`;
+  const activityRow = `document.querySelector('#todos > li:not(.empty, .separator)')`;
+  const hoverPoint = await evl(`(() => {
+    window.__activityRepoPath = ${activityPaths}[0];
+    const row = ${activityRow}.getBoundingClientRect();
+    return { x: row.left + row.width / 2, y: row.top + row.height / 2 };
+  })()`);
+  await cdp.send('Input.dispatchMouseEvent', { type: 'mouseMoved', ...hoverPoint });
+  const hoverLineMatches = `(() => {
+    const [repoPath, rowPath] = ${activityPaths};
+    if (repoPath !== window.__activityRepoPath || !rowPath?.getTotalLength()) return false;
+    const origin = rowPath.ownerSVGElement.getBoundingClientRect();
+    const chip = document.querySelector('#actions .chip.active').getBoundingClientRect();
+    const row = ${activityRow}.getBoundingClientRect();
+    const start = rowPath.getPointAtLength(0);
+    const end = rowPath.getPointAtLength(rowPath.getTotalLength());
+    const near = (actual, expected) => Math.abs(actual - expected) < 0.5;
+    const chipX = chip.left + chip.width / 2;
+    const endX = end.x + origin.left;
+    return near(start.x + origin.left, chipX) && near(start.y + origin.top, chip.bottom + 4)
+      && near(endX, chipX) && endX >= row.left && endX <= row.right
+      && near(end.y + origin.top, row.top - 4);
+  })()`;
+  check('Activity のホバー線が分類チップから行の上端へ垂直に伸びる',
+    await waitFor('Activity のホバー線', hoverLineMatches, 5000));
+  await cdp.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 0, y: hoverPoint.y });
+  check('Activity のホバー解除では分類チップまでの線が残る',
+    await waitFor('Activity のホバー解除', `(() => {
+      const paths = ${activityPaths};
+      return paths.length === 1 && paths[0] === window.__activityRepoPath;
+    })()`, 5000));
+
   const status = await evl(`document.querySelector('#status').textContent`);
   check('ヘッダに件数と更新時刻', /4 件/.test(status), status);
   check('エラーバー非表示', await evl(`document.querySelector('#error').classList.contains('hidden')`));
