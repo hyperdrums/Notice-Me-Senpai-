@@ -177,6 +177,10 @@ button:is(:hover, :active):not(:disabled, .chip) {
   --button-text: var(--text-on-accent);
   --button-edge: var(--accent-edge);
 }
+#win-close {
+  --button-face: var(--accent-danger);
+  --button-edge: color-mix(in srgb, var(--accent-danger) 70%, black);
+}
 :is(button, .chip):active:not(:disabled) { transform: translate(2px, 3px); }
 button:disabled { opacity: .6; cursor: default; }
 li button { align-self: center; flex-shrink: 0; }
