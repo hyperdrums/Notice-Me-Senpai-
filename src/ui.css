@@ -55,7 +55,7 @@ li:not(.empty, .separator)::before {
   display: flex; gap: 6px; padding: 7px 8px 13px;
   background: repeating-linear-gradient(120deg, var(--hazard-cream) 0 11px, var(--charcoal) 11px 17px)
               bottom / 100% 7px no-repeat,
-              url(assets/titlebar-banner.png) 0 0 / 100% 100% no-repeat var(--charcoal);
+              url(assets/titlebar-banner.png) 8px 4px / auto 34px no-repeat var(--charcoal);
   --focus-ring: var(--lime);
 }
 .window-drag {
