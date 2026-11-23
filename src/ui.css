@@ -69,7 +69,7 @@ li:not(.empty, .separator)::before {
 #build-version { color: var(--muted); overflow: hidden; text-overflow: ellipsis; }
 header {
   display: grid; grid-template-columns: max-content minmax(0, 1fr) minmax(0, max-content) max-content;
-  gap: 9px 8px; align-items: center; padding: 7px 10px 9px;
+  gap: 9px 8px; align-items: center; padding: 14px 10px 9px;
   border-bottom: 1px solid var(--line);
 }
 .tab-track {
@@ -291,9 +291,18 @@ li > .trail:empty { display: none; }
   filter: drop-shadow(2px 2px 0 var(--shadow));
 }
 .tab .warning-count {
-  top: -7px; left: 50%; transform: translateX(-50%);
-  margin-top: -3px; /* トラックの上枠 1px と内側の余白 2px を相殺する。 */
+  top: -15.5px; left: 10%;
+  display: grid; place-items: center;
+  border-radius: 50% 50% 50% 0; clip-path: none;
+  /* 左下の角を反転してから回し、先端を下に向ける。 */
+  transform: rotate(45deg) scaleX(-1);
   z-index: 1;
+}
+.tab .warning-count::before {
+  content: "!";
+  font-weight: 800; font-size: 9px; line-height: 1; color: #fff;
+  font-style: normal; letter-spacing: normal;
+  transform: scaleX(-1) rotate(-45deg);
 }
 /* 期限: 通常は控えめ、間近は黄系、超過は赤＋太字。 */
 .due { color: var(--muted); font-variant-numeric: tabular-nums; font-weight: 600; }

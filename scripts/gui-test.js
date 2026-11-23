@@ -414,10 +414,11 @@ async function checkConfigMessage(key, settingsKey = key) {
     const { width, height } = badge.getBoundingClientRect();
     const tabBadge = document.querySelector('#assignedTab .warning-count');
     const bs = getComputedStyle(badge), ts = getComputedStyle(tabBadge);
-    const samePaint = bs.backgroundColor === ts.backgroundColor && bs.clipPath === ts.clipPath;
+    const diamond = bs.clipPath === 'polygon(50% 0px, 100% 50%, 50% 100%, 0px 50%)';
     return { value: chip.dataset.value, name: chip.getAttribute('aria-label'), title: chip.title,
       valid: chip.tagName === 'BUTTON' && chip.querySelectorAll('.warning-count').length === 1
-        && badge.getAttribute('aria-hidden') === 'true' && width === 12 && height === 12 && samePaint };
+        && badge.getAttribute('aria-hidden') === 'true' && width === 12 && height === 12
+        && bs.top === '-6px' && bs.left === '-6px' && diamond && bs.backgroundColor === ts.backgroundColor };
   })`);
   const titlebarState = `(() => {
     const titlebar = document.querySelector('.window-titlebar');
@@ -457,7 +458,7 @@ async function checkConfigMessage(key, settingsKey = key) {
   await checkAssignedWarning('Items と警告バッジを表示し、超過数は読み上げとツールチップで伝える', '期限超過 1 件');
   await click('.tab[data-view=assigned]');
   await checkTabIndicator('タブ切替でインジケーターが Items に移動する', 'assigned');
-  const warningPosition = await evl(`(() => {
+  const warningPinState = `(() => {
     const tab = document.querySelector('#assignedTab');
     const badge = tab.querySelector('.warning-count');
     if (!badge) return null;
@@ -466,19 +467,24 @@ async function checkConfigMessage(key, settingsKey = key) {
     const trackTop = tab.closest('.tab-track').getBoundingClientRect().top;
     const x = badgeRect.left + badgeRect.width / 2;
     const y = badgeRect.top + badgeRect.height / 2;
+    const style = getComputedStyle(badge);
+    const mark = getComputedStyle(badge, '::before');
     return {
-      centerOffsetX: x - (tabRect.left + tabRect.width / 2),
-      centerOffsetY: y - trackTop,
+      centerOffsetX: x - tabRect.left,
+      maxCenterOffsetX: tabRect.width * 0.4,
       bottomOffsetY: badgeRect.bottom - trackTop,
-      visibleAcrossBorder: document.elementFromPoint(x, y) === badge
-        && document.elementFromPoint(x, trackTop + 1) === badge,
+      visible: document.elementFromPoint(x, y - 5) === badge
+        && document.elementFromPoint(x, badgeRect.bottom - 1) === badge,
+      pin: style.clipPath === 'none' && style.borderRadius === '50% 50% 50% 0px'
+        && mark.content === '"!"' && mark.color === 'rgb(255, 255, 255)',
     };
-  })()`);
-  check('Items の警告バッジはタブ中央にあり、トラック上枠をまたいで見える',
-    warningPosition && Math.abs(warningPosition.centerOffsetX) <= 4
-      && warningPosition.centerOffsetY < 0 && warningPosition.bottomOffsetY > 0
-      && warningPosition.visibleAcrossBorder,
-    JSON.stringify(warningPosition));
+  })()`;
+  const checkWarningPin = async (label) => {
+    const pin = await evl(warningPinState);
+    check(label, pin && pin.centerOffsetX >= 0 && pin.centerOffsetX <= pin.maxCenterOffsetX
+      && pin.bottomOffsetY >= 0 && pin.bottomOffsetY <= 6 && pin.visible && pin.pin, JSON.stringify(pin));
+  };
+  await checkWarningPin('Items の警告ピンは白い ! を表示し、タブ左側でトラック上枠に刺さる');
   await waitFor('作業アイテム一覧 7 件', `document.querySelectorAll(${JSON.stringify(ROWS)}).length === 7`);
   await checkChipConnector('Items の接続線がアクティブなチップに合う', 'assigned', 'assignedRepos', 'assignedTypes');
   check('タブ切替で非表示の Activity のパスを空にする', (await count('#list .chip-connector path')) === 0);
@@ -958,10 +964,9 @@ async function checkConfigMessage(key, settingsKey = key) {
       const hasIcon = element.matches('#refresh, .tab[data-view=settings]');
       const clippedIcon = hasIcon && (!icon || icon.width === 0 ||
         icon.left < rect.left || icon.right > rect.right || icon.top < rect.top || icon.bottom > rect.bottom);
-      const badge = element.querySelector('.warning-count')?.getBoundingClientRect();
-      // 警告バッジはトラックの上枠をまたぐため、ここではサイズだけを検証する。
-      const clippedBadge = badge && (badge.width < 10 || badge.width > 14);
-      return outside || clippedTab || clippedIcon || clippedBadge || badTrack
+      const badge = element.querySelector('.warning-count');
+      const badBadgeSize = badge && (badge.offsetWidth !== 12 || badge.offsetHeight !== 12);
+      return outside || clippedTab || clippedIcon || badBadgeSize || badTrack
         ? [element.id || element.dataset.view || element.className] : [];
     });
   })()`;
@@ -974,6 +979,7 @@ async function checkConfigMessage(key, settingsKey = key) {
   await cdp.send('Emulation.setDeviceMetricsOverride', { width: 320, height: 640, deviceScaleFactor: 1, mobile: false });
   const narrowWidth = await evl('window.innerWidth');
   await checkTabIndicator('320px へのリサイズ後もインジケーターが Items に合う', 'assigned');
+  await checkWarningPin('320px でも警告ピンがトラック上枠に刺さり、クリップされない');
   const narrowWithWarning = await evl(headerProblems);
   const narrowTitlebar = await evl(titlebarState);
   const narrowWarnings = await chipWarnings();
