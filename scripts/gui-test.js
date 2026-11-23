@@ -147,7 +147,10 @@ async function checkChipConnector(label, view, repos, types) {
   })()`;
   check(label, await waitFor(label, matches, 5000));
 }
+const swipeFinished = `!document.querySelector('section:is(.enter-right, .enter-left)')`;
+
 async function shot(name, dir = OUT) {
+  await waitFor('撮影前にスワイプインが完了する', swipeFinished, 5000);
   const { data } = await cdp.send('Page.captureScreenshot', { format: 'png' });
   const file = path.join(dir, name);
   fs.writeFileSync(file, Buffer.from(data, 'base64'));
@@ -158,16 +161,17 @@ async function shot(name, dir = OUT) {
 // 検証方法: 全要素（::before / ::after の疑似要素と寸法を含む）の計算スタイルを
 // ダーク/ライトで比較し、差分をプロパティ名と両値で報告する。
 async function checkDarkTheme(label) {
-  // hover/active のトランジション途中の値（drop-shadow のpx等）が採取間でズレて誤検出しないよう、
-  // 採取中だけ各要素の style に transition/animation を止める値を当てる（静的な計算値に固定）。
-  // CSP style-src 'self' では <style> 注入が弾かれるため、DOM API の element.style を使う
-  const freeze = () => evl(`(() => {
-    for (const el of document.querySelectorAll('*')) {
-      el.style.setProperty('transition', 'none', 'important');
-      el.style.setProperty('animation', 'none', 'important');
-    }
-  })()`);
+  await waitFor('配色比較前にスワイプインが完了する', swipeFinished, 5000);
   const collect = () => evl(`(() => {
+    // 採取中だけ遷移を止め、後続のアニメーション検証に影響しないよう元に戻す。
+    const elements = [...document.querySelectorAll('*')];
+    const motion = [];
+    for (const { style } of elements) {
+      for (const property of ['transition', 'animation']) {
+        motion.push([style, property, style.getPropertyValue(property), style.getPropertyPriority(property)]);
+        style.setProperty(property, 'none', 'important');
+      }
+    }
     const keyOf = (el, i) => el.id ? '#' + el.id
       : (typeof el.className === 'string' && el.className.trim())
         ? el.tagName.toLowerCase() + '.' + el.className.trim().split(/\\s+/).join('.')
@@ -179,13 +183,14 @@ async function checkDarkTheme(label) {
       return out.join('\\u0001');
     };
     const parts = [];
-    [...document.querySelectorAll('*')].forEach((el, i) => {
+    elements.forEach((el, i) => {
       const k = keyOf(el, i);
       const r = el.getBoundingClientRect();
       parts.push(k + '\\u0002' + Math.round(r.x) + ',' + Math.round(r.y) + 'x' + Math.round(r.width) + 'x' + Math.round(r.height) + '\\u0002' + snap(el, null));
       parts.push(k + '::before\\u0002\\u0002' + snap(el, '::before'));
       parts.push(k + '::after\\u0002\\u0002' + snap(el, '::after'));
     });
+    for (const [style, property, value, priority] of motion) style.setProperty(property, value, priority);
     return parts.join('\\u0003');
   })()`);
   const diff = (a, b) => {
@@ -215,7 +220,6 @@ async function checkDarkTheme(label) {
     })`);
     check(`${label}: OS ${scheme} 設定でもルートと設定入力は dark`,
       styles.emulated && styles.schemes.every(v => v === 'dark'), JSON.stringify(styles));
-    await freeze();
     captures[scheme] = await collect();
   }
   await cdp.send('Emulation.setEmulatedMedia', { features: [] });
@@ -492,7 +496,29 @@ async function checkConfigMessage(key, settingsKey = key) {
     q?.scope === 'assigned_to_me' && q?.state === 'opened' && q?.order_by === 'due_date' && q?.sort === 'asc' && q?.per_page === '100',
     JSON.stringify(q));
   await checkAssignedWarning('Items と警告バッジを表示し、超過数は読み上げとツールチップで伝える', '期限超過 1 件');
-  await click('.tab[data-view=assigned]');
+  await cdp.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'no-preference' }] });
+  const itemsSwipe = await evl(`(() => {
+    document.querySelector('.tab[data-view=assigned]').click();
+    const [first, second] = document.querySelectorAll('#assignedItems > li');
+    const styles = [first, second].map(row => {
+      const { animationName, animationDelay } = getComputedStyle(row);
+      return { animationName, animationDelay };
+    });
+    return { fromRight: document.querySelector('#assigned').classList.contains('enter-right'), styles };
+  })()`);
+  const [firstSwipe, secondSwipe] = itemsSwipe.styles;
+  check('Items の行が右からスワイプインし、先頭 2 行に 35ms の時差がある',
+    itemsSwipe.fromRight && itemsSwipe.styles.every(style => /^swipe-in/.test(style.animationName))
+      && Math.abs(parseFloat(secondSwipe.animationDelay) - parseFloat(firstSwipe.animationDelay) - 0.035) < 0.001,
+    JSON.stringify(itemsSwipe));
+  const swipeClean = `(() => {
+    const section = document.querySelector('#assigned');
+    return !section.matches('.enter-right, .enter-left') && !section.querySelector('.swipe-target')
+      && [...section.querySelectorAll('*')].every(element => !element.style.getPropertyValue('--swipe-i'));
+  })()`;
+  check('Items のスワイプイン完了後に enter クラスと時差指定を除去する',
+    await waitFor('Items のスワイプインが完了する', swipeClean, 5000));
+  await cdp.send('Emulation.setEmulatedMedia', { features: [] });
   await checkTabIndicator('タブ切替でインジケーターが Items に移動する', 'assigned');
   const warningPinState = `(() => {
     const tab = document.querySelector('#assignedTab');
