@@ -127,7 +127,7 @@ function chipConnectorPath(origin, upper, lower, detourBar) {
   return `M ${x1} ${y1} V ${(y1 + y2) / 2} H ${x2} V ${y2}`;
 }
 
-function rowConnectorPath(origin, chip, bar, list, row) {
+function rowConnectorPath(origin, chip, bar, list, row, detour = false) {
   const visibleTop = Math.max(row.top, list.top);
   const visibleBottom = Math.min(row.bottom, list.bottom);
   if (visibleTop >= visibleBottom) return '';
@@ -138,7 +138,9 @@ function rowConnectorPath(origin, chip, bar, list, row) {
   const gutterX = row.left - 12 - origin.left;
   const endX = row.left - 4 - origin.left;
   const endY = (visibleTop + visibleBottom) / 2 - origin.top;
-  return `M ${startX} ${startY - origin.top} V ${bendY - origin.top} H ${gutterX} V ${endY} H ${endX}`;
+  const laneX = bar.left + 4 - origin.left;
+  const viaLane = detour ? ` V ${startY + 4 - origin.top} H ${laneX}` : '';
+  return `M ${startX} ${startY - origin.top}${viaLane} V ${bendY - origin.top} H ${gutterX} V ${endY} H ${endX}`;
 }
 
 function updateChipConnectorPath(svg, target, d, sameRow = false) {
@@ -190,8 +192,11 @@ function scheduleChipConnectors() {
       const origin = svg.getBoundingClientRect();
       const detourBar = hasLowerRepoRow ? repos.getBoundingClientRect() : null;
       updateChipConnectorPath(svg, 'type', upper && type ? chipConnectorPath(origin, upper, type, detourBar) : '');
-      const rowPath = type && row
-        ? rowConnectorPath(origin, type, types.getBoundingClientRect(), list.getBoundingClientRect(), row.getBoundingClientRect())
+      const rowChip = type ?? upper;
+      const rowBar = type ? types : repos;
+      const rowPath = rowChip && row
+        ? rowConnectorPath(origin, rowChip, rowBar.getBoundingClientRect(), list.getBoundingClientRect(),
+          row.getBoundingClientRect(), !type && hasLowerRepoRow)
         : '';
       updateChipConnectorPath(svg, 'row', rowPath, row === connector.renderedRow);
       connector.renderedRow = row;
