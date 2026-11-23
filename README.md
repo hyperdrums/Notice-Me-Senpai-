@@ -1,5 +1,9 @@
 # Notice Me, Senpai! (NMS)
 
+<p align="center">
+  <img src="docs/nms-banner-full.png" width="760" alt="Notice Me, Senpai! ロゴバナー">
+</p>
+
 GitLab の通知メールが多すぎて困っていませんか？  
 NMS は、GitLab の To-Do を Windows のタスクバーに件数バッジで表示するデスクトップアプリです。  
 レビュー依頼・メンション・アサインなどを、タスクバーのバッジや通知領域（トレイ）で一目で確認できます。
