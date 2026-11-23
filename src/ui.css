@@ -40,7 +40,12 @@
 .s-open { --status: #3fb950; } .s-draft { --status: var(--muted); } .s-merged { --status: #b692fb; }
 .s-closed { --status: #ff7164; } .s-unknown { --status: var(--muted); }
 * { box-sizing: border-box; }
-body { margin: 0; background: var(--bg); font: 13px "Segoe UI", "Yu Gothic UI", sans-serif; color: var(--text); }
+html, body { height: 100%; }
+body {
+  margin: 0; background: var(--bg); font: 13px "Segoe UI", "Yu Gothic UI", sans-serif; color: var(--text);
+  overflow: hidden; display: flex; flex-direction: column;
+}
+.window-titlebar, header, #error, .bar, #mrSyncError, #assignedLimit { flex-shrink: 0; }
 /* 既存の要素に角切りを適用。操作要素は面だけを切り、外側のフォーカス枠を残す。 */
 .cut, body > section { --corner-size: 13px; }
 .cut-sm, button, .chip.active, li:not(.empty, .separator) { --corner-size: 9px; }
@@ -111,8 +116,10 @@ header .tab[data-view="settings"] svg { display: block; }
 }
 body > section {
   position: relative; isolation: isolate;
+  flex: 1; min-height: 0; display: flex; flex-direction: column;
   margin: 8px 10px 12px; padding: 4px 0 9px 5px;
 }
+#settings { overflow-y: auto; }
 body > section::before, body > section::after { content: ''; position: absolute; pointer-events: none; }
 body > section::before {
   inset: 0; z-index: -2; background: var(--panel); border-left: 5px solid var(--line);
@@ -126,8 +133,11 @@ body > section::after {
   background: var(--danger-wash); color: var(--danger-text); overflow-wrap: anywhere;
 }
 body:has(> #settings:not(.hidden) > #settingsMessage:not(.hidden)) > #error { display: none; }
-ul { list-style: none; margin: 0; display: flex; flex-direction: column; gap: 6px; padding: 6px 6px 6px 12px; }
-li { display: flex; gap: 8px; padding: 8px 10px; border-bottom: 1px solid var(--line); cursor: pointer; }
+ul {
+  flex: 1; min-height: 0; overflow-y: auto;
+  list-style: none; margin: 0; display: flex; flex-direction: column; gap: 6px; padding: 6px 6px 6px 12px;
+}
+li { flex-shrink: 0; display: flex; gap: 8px; padding: 8px 10px; border-bottom: 1px solid var(--line); cursor: pointer; }
 li:not(.empty, .separator) {
   position: relative; border-bottom: 0; filter: var(--cut); transition: transform .12s;
 }
