@@ -365,8 +365,13 @@ async function checkConfigMessage(key, settingsKey = key) {
     time: ${lastUpdated}.textContent, title: ${lastUpdated}.title,
     visible: !${lastUpdated}.hidden && ${lastUpdated}.getBoundingClientRect().height > 0,
   })`);
-  check('更新ボタン下に更新時刻を表示する', visible && /^\d{1,2}:\d{2}:\d{2}$/.test(time), time);
+  check('更新時刻を表示する', visible && /^\d{1,2}:\d{2}:\d{2}$/.test(time), time);
   check('更新時刻の title に最終更新を表示する', title === `最終更新 ${time}`, title);
+  check('更新時刻は更新ボタンの左にある', await evl(`(() => {
+    const timeRect = ${lastUpdated}.getBoundingClientRect();
+    const buttonRect = document.querySelector('#refresh').getBoundingClientRect();
+    return timeRect.right <= buttonRect.left;
+  })()`));
   check('エラーバー非表示', await evl(`document.querySelector('#error').classList.contains('hidden')`));
 
   const tags = await evl(`[...document.querySelectorAll('#todos .tag')].map(e => e.textContent).join(',')`);

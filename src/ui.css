@@ -95,7 +95,7 @@ header .tab:focus-visible { z-index: 1; }
   color: var(--muted); font: 600 12px var(--mono-font); font-variant-numeric: tabular-nums;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; text-align: right;
 }
-.refresh-wrap { display: flex; flex-direction: column; align-items: center; gap: 3px; }
+.refresh-wrap { display: flex; flex-direction: row; align-items: center; gap: 6px; }
 #refresh svg { display: block; }
 #last-updated { color: var(--muted); font: 10px var(--mono-font); font-variant-numeric: tabular-nums; }
 #last-updated.flash { animation: last-updated-flash .6s ease-out; }
