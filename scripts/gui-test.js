@@ -334,13 +334,17 @@ async function checkConfigMessage(key, settingsKey = key) {
           || Math.max(y1, y2) + origin.top + 1 <= card.top
           || Math.min(y1, y2) + origin.top - 1 >= card.bottom);
       });
-      return near(x + origin.left, chip.left + chip.width / 2) && near(y + origin.top, chip.bottom + 4)
-        && bendY > y && endY > bendY && gutterX >= 1
-        && near(gutterX + origin.left, row.left - 6) && near(endX + origin.left, row.left - 4)
-        && near(endY + origin.top, row.top + row.height / 2) && clearsCards;
+      if (!near(x + origin.left, chip.left + chip.width / 2) || !near(y + origin.top, chip.bottom + 4)
+        || bendY <= y || endY <= bendY || !near(endX + origin.left, row.left - 4)
+        || !near(endY + origin.top, row.top + row.height / 2) || !clearsCards) return false;
+      const sectionLeft = document.querySelector('#list').getBoundingClientRect().left;
+      const strokeWidth = parseFloat(getComputedStyle(rowPath).strokeWidth);
+      return { offset: gutterX + origin.left - sectionLeft, strokeWidth, strokeLeft: gutterX - strokeWidth / 2 };
     })()`;
     const label = `Activity のホバー線がカードを避けて ${index + 1} 行目の左辺中央に伸びる`;
-    check(label, await waitFor(label, hoverLineMatches, 5000));
+    const { offset, strokeWidth, strokeLeft } = await waitFor(label, hoverLineMatches, 5000);
+    check(label, offset >= 5 && offset <= 7 && strokeWidth === 2 && strokeLeft >= 0,
+      `セクション左端から ${offset}px / 線幅 ${strokeWidth}px / SVG 左端から線の外縁まで ${strokeLeft}px`);
   }
   await cdp.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 0, y: 0 });
   check('Activity のホバー解除では分類チップまでの線が残る',
