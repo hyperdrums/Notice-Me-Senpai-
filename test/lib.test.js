@@ -258,6 +258,13 @@ test('tr: 未知の lang は日本語、未知の key はそのまま返す', ()
   assert.equal(tr('en', 'shikatanai_key'), 'shikatanai_key');
 });
 
+test('tr: 設定ファイルの読込失敗とトークンの復号失敗を日英で区別する', () => {
+  assert.equal(tr('ja', 'errConfigRead'), '設定ファイルを読み込めませんでした。');
+  assert.equal(tr('ja', 'errTokenDecrypt'), 'トークンの復号に失敗しました。設定タブでトークンを再入力してください。');
+  assert.equal(tr('en', 'errConfigRead'), 'Could not read the configuration file.');
+  assert.equal(tr('en', 'errTokenDecrypt'), 'Could not decrypt the token. Re-enter it in the Settings tab.');
+});
+
 test('actionLabel: GitLab の action_name をラベルにする', () => {
   assert.equal(actionLabel('ja', 'review_requested'), 'レビュー依頼');
   assert.equal(actionLabel('en', 'review_requested'), 'Review requested');

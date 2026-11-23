@@ -31,7 +31,7 @@ let quitting = false;
 let config = { ...DEFAULTS, token: '' };
 let knownIds = null; // 初回取得ではデスクトップ通知を出さない
 // count は To-Do だけの件数（バッジとトレイ用）。作業アイテムの件数は混ぜない
-let state = { todos: [], assigned: [], assignedLimited: false, assignedTotal: null, assignedError: null, relatedMrsByIssue: {}, mrSyncError: false, count: 0, error: null, updatedAt: null, loading: false };
+let state = { todos: [], assigned: [], assignedLimited: false, assignedTotal: null, assignedError: null, relatedMrsByIssue: {}, mrSyncError: false, count: 0, error: null, settingsMessage: null, updatedAt: null, loading: false };
 let connectionGeneration = 0;
 let mrCache = newMrCache();
 let mrJob = null;
@@ -48,25 +48,41 @@ const guessLang = () => (String(app.getLocale() || '').toLowerCase().startsWith(
 
 // ---------- 設定（トークンは DPAPI で暗号化して保存） ----------
 async function loadConfig() {
-  const fresh = { ...DEFAULTS, token: '', lang: guessLang() };
+  config = { ...DEFAULTS, lang: guessLang() };
+  let raw;
   try {
-    const raw = JSON.parse(fs.readFileSync(configPath(), 'utf8'));
-    const token = raw.tokenEnc
-      ? (await safeStorage.decryptStringAsync(Buffer.from(raw.tokenEnc, 'base64'))).result
-      : '';
-    delete raw.tokenEnc;
-    config = { ...fresh, ...raw, token };
+    raw = JSON.parse(fs.readFileSync(configPath(), 'utf8'));
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw new Error('Invalid config');
+  } catch (e) {
+    if (e.code !== 'ENOENT') setState({ settingsMessage: 'errConfigRead' });
+    return;
+  }
+
+  const { tokenEnc, ...rest } = raw;
+  config = { ...config, ...rest, token: '' };
+  if (tokenEnc == null || tokenEnc === '') return;
+  try {
+    if (!(await safeStorage.isAsyncEncryptionAvailable())) {
+      setState({ settingsMessage: 'errEncryptionUnavailable' });
+      return;
+    }
+    const { result, shouldReEncrypt } = await safeStorage.decryptStringAsync(Buffer.from(tokenEnc, 'base64'));
+    if (!result) throw new Error('Empty decrypted token');
+    config.token = result;
+    if (shouldReEncrypt) setState({ settingsMessage: 'tokenReEncrypt' });
   } catch {
-    config = fresh;
+    setState({ settingsMessage: 'errTokenDecrypt' });
   }
 }
 
-async function saveConfig() {
-  const { token, ...rest } = config;
+async function saveConfig(next) {
+  const { token, ...rest } = next;
   const enc = token ? (await safeStorage.encryptStringAsync(token)).toString('base64') : '';
   const out = { ...rest, tokenEnc: enc };
-  fs.mkdirSync(path.dirname(configPath()), { recursive: true });
-  fs.writeFileSync(configPath(), JSON.stringify(out, null, 2));
+  const file = configPath();
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(`${file}.tmp`, JSON.stringify(out, null, 2));
+  fs.renameSync(`${file}.tmp`, file);
 }
 
 function applyCertPolicy() {
@@ -214,7 +230,8 @@ async function poll() {
   const generation = connectionGeneration;
   if (!config.baseUrl || !config.token) {
     assignedSeq = seq;
-    setState({ todos: [], assigned: [], assignedLimited: false, assignedTotal: null, assignedError: null, count: 0, error: tr(config.lang, 'errNotConfigured') });
+    const errorKey = (!config.token && state.settingsMessage) || 'errNotConfigured';
+    setState({ todos: [], assigned: [], assignedLimited: false, assignedTotal: null, assignedError: null, count: 0, error: tr(config.lang, errorKey) });
     return;
   }
   setState({ loading: true });
@@ -346,9 +363,21 @@ ipcMain.handle('get-config', () => {
   return { ...rest, hasToken: !!token };
 });
 ipcMain.handle('save-config', async (_e, c) => {
-  const previous = config;
-  config = mergeConfig(config, c);
-  if (previous.baseUrl !== config.baseUrl || previous.token !== config.token) {
+  const next = mergeConfig(config, c);
+  // 空欄の保存で、復号できなかった暗号化トークンを消さない。
+  if (!next.token && ['errTokenDecrypt', 'errEncryptionUnavailable'].includes(state.settingsMessage)) {
+    return { error: state.settingsMessage };
+  }
+  try {
+    if (next.token && !(await safeStorage.isAsyncEncryptionAvailable())) return { error: 'errEncryptionUnavailable' };
+    await saveConfig(next);
+  } catch {
+    return { error: 'errConfigSave' };
+  }
+  const connectionChanged = config.baseUrl !== next.baseUrl || config.token !== next.token;
+  config = next;
+  setState({ settingsMessage: null });
+  if (connectionChanged) {
     assignedSeq = ++pollSeq;
     connectionGeneration++;
     mrJob?.controller.abort();
@@ -360,13 +389,12 @@ ipcMain.handle('save-config', async (_e, c) => {
     clearEtags(etagStore);
     setState({ todos: [], count: 0, assigned: [], assignedLimited: false, assignedTotal: null, assignedError: null, ...mrView(mrCache), mrSyncError: false });
   }
-  await saveConfig();
   applyCertPolicy();
   applyAutoStart();
   tray?.setContextMenu(trayMenu());   // 言語が変わった可能性があるのでメニューを作り直す
   knownIds = null;
   schedule();
-  return true;
+  return { error: null };
 });
 ipcMain.handle('refresh', () => poll());
 ipcMain.handle('open', (_e, url) => openUrl(url));
