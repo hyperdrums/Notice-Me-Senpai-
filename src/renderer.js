@@ -13,19 +13,62 @@ const VIEWS = ['list', 'assigned', 'settings'];
 const tabTrack = $('.tab-track');
 const tabIndicator = tabTrack.querySelector('.tab-indicator');
 const tabs = tabTrack.querySelectorAll('.tab');
+const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)');
+let finishViewSwipe;
+
 function positionTabIndicator() {
   const active = tabTrack.querySelector('.tab.active');
   tabIndicator.style.transform = `translateX(${active.offsetLeft}px)`;
   tabIndicator.style.width = `${active.offsetWidth}px`;
 }
 
-tabs.forEach(tab => {
-  tab.onclick = () => {
-    tabs.forEach(t => t.classList.toggle('active', t === tab));
-    for (const v of VIEWS) $(`#${v}`).classList.toggle('hidden', tab.dataset.view !== v);
-    positionTabIndicator();
+function swipeIn(section, direction) {
+  const targets = [...section.querySelectorAll(':scope > :not(ul, .chip-connector), :scope > ul > li')]
+    .filter(element => element.checkVisibility());
+  if (!targets.length) return;
+
+  let rowIndex = 0;
+  for (const target of targets) {
+    target.style.setProperty('--swipe-i', target.matches('li') ? Math.min(++rowIndex, 10) : 0);
+    target.classList.add('swipe-target');
+  }
+  const pending = new Set(targets);
+  const onEnd = event => {
+    if (event.animationName === 'swipe-in' && pending.delete(event.target) && !pending.size) finish();
+  };
+  const finish = () => {
+    clearTimeout(timeout);
+    section.removeEventListener('animationend', onEnd);
+    section.classList.remove(direction);
+    for (const target of targets) {
+      target.classList.remove('swipe-target');
+      target.style.removeProperty('--swipe-i');
+    }
+    finishViewSwipe = undefined;
     scheduleChipConnectors();
   };
+  // 再描画で行が差し替わると animationend が届かないことがある。
+  const timeout = setTimeout(finish, 650);
+  finishViewSwipe = finish;
+  section.addEventListener('animationend', onEnd);
+  section.classList.add(direction);
+}
+
+function showView(view, animate = true) {
+  const from = VIEWS.indexOf(tabTrack.querySelector('.tab.active').dataset.view);
+  const to = VIEWS.indexOf(view);
+  if (from !== to) {
+    finishViewSwipe?.();
+    tabs.forEach(tab => tab.classList.toggle('active', tab.dataset.view === view));
+    for (const v of VIEWS) $(`#${v}`).classList.toggle('hidden', v !== view);
+    if (animate && !reducedMotion.matches) swipeIn($(`#${view}`), to > from ? 'enter-right' : 'enter-left');
+  }
+  positionTabIndicator();
+  scheduleChipConnectors();
+}
+
+tabs.forEach(tab => {
+  tab.onclick = () => showView(tab.dataset.view);
 });
 
 let tabResizeFrame = null;
@@ -125,6 +168,10 @@ function scheduleChipConnectors() {
       if (section.classList.contains('hidden')) {
         connector.hoveredRow = null;
         connector.renderedRow = null;
+        svg.replaceChildren();
+        continue;
+      }
+      if (section.matches('.enter-right, .enter-left')) {
         svg.replaceChildren();
         continue;
       }
@@ -462,7 +509,7 @@ async function loadForm() {
   f.insecure.checked = c.insecure;
   f.elements.lang.value = lang;
   f.token.placeholder = c.hasToken ? tr(lang, 'tokenSaved') : tr(lang, 'tokenNew');
-  if (!c.baseUrl || !c.hasToken) document.querySelector('.tab[data-view=settings]').click();
+  if (!c.baseUrl || !c.hasToken) showView('settings', false);
 }
 
 $('#form').onsubmit = async e => {

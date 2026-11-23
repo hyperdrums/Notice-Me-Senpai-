@@ -120,6 +120,17 @@ body > section {
   margin: 8px 10px 12px; padding: 4px 0 9px 5px;
 }
 #settings { overflow-y: auto; }
+.enter-right { --swipe-x: 24px; }
+.enter-left { --swipe-x: -24px; }
+:is(.enter-right, .enter-left) .swipe-target {
+  animation: swipe-in .22s ease-out both;
+  animation-delay: calc(var(--swipe-i) * 35ms);
+}
+:is(.enter-right, .enter-left) > ul, #settings:is(.enter-right, .enter-left) { overflow-x: hidden; }
+@keyframes swipe-in {
+  from { translate: var(--swipe-x) 0; opacity: 0; }
+  to { translate: 0; opacity: var(--row-opacity, 1); }
+}
 body > section::before, body > section::after { content: ''; position: absolute; pointer-events: none; }
 body > section::before {
   inset: 0; z-index: -2; background: var(--panel); border-left: 5px solid var(--line);
@@ -231,7 +242,7 @@ li .done-button {
   display: grid; place-items: center;
   margin-bottom: 0; padding: 5px 8px 8px 5px;
 }
-.done-pending { opacity: .55; }
+.done-pending { --row-opacity: .55; opacity: var(--row-opacity); }
 .done-pending .title { text-decoration: line-through; }
 .done-pending .done-button:disabled {
   --button-face: var(--accent-primary);
