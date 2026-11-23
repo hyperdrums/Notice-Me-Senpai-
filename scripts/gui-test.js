@@ -360,34 +360,33 @@ async function checkConfigMessage(key, settingsKey = key) {
         && badge.getAttribute('aria-hidden') === 'true' && width === 12 && height === 12 && samePaint };
   })`);
   const titlebarState = `(() => {
-    const drag = document.querySelector('.window-drag');
-    const banner = drag.querySelector('.window-brand img.window-brand-img');
-    const bannerRect = banner?.getBoundingClientRect();
+    const titlebar = document.querySelector('.window-titlebar');
+    const drag = titlebar.querySelector('.window-drag');
     const build = drag.querySelector('#build-version');
     const buildRect = build.getBoundingClientRect();
     const rect = drag.getBoundingClientRect();
-    const titlebarRect = drag.parentElement.getBoundingClientRect();
+    const titlebarRect = titlebar.getBoundingClientRect();
     const [minimizeRect, closeRect] = ['#win-minimize', '#win-close'].map(selector =>
       document.querySelector(selector).getBoundingClientRect());
     const style = node => getComputedStyle(node);
     return {
+      width: window.innerWidth,
       build: build.textContent, buildVisible: buildRect.width > 0 && build.scrollWidth <= build.clientWidth,
-      bannerVisible: bannerRect?.width === 54 && bannerRect.height === 18 && banner.naturalWidth > 0
-        && banner.checkVisibility({ visibilityProperty: true, opacityProperty: true })
-        && banner.getAttribute('aria-hidden') === 'true',
-      fits: !!bannerRect && bannerRect.left >= rect.left && bannerRect.right < buildRect.left
+      bannerVisible: style(titlebar).backgroundImage.includes('titlebar-banner.png'),
+      fits: buildRect.left >= rect.left
         && buildRect.right <= rect.right && rect.right < minimizeRect.left
         && minimizeRect.width > 0 && minimizeRect.right < closeRect.left
         && closeRect.width > 0 && closeRect.right <= titlebarRect.right,
       drag: style(drag).getPropertyValue('-webkit-app-region'),
-      pointerEvents: [banner, build].map(node => node && style(node).pointerEvents),
+      pointerEvents: style(build).pointerEvents,
     };
   })()`;
   await waitFor('ビルドバージョンを取得', `document.querySelector('#build-version').textContent.length > 0`);
   const normalTitlebar = await evl(titlebarState);
-  check('タイトルバーにバナー画像と package.json の BUILD を表示し、ドラッグできる',
-    normalTitlebar.bannerVisible && normalTitlebar.build === BUILD_LABEL && normalTitlebar.buildVisible
-      && normalTitlebar.fits && normalTitlebar.drag === 'drag' && normalTitlebar.pointerEvents.every(value => value === 'none'),
+  check('520px のタイトルバーにバナー背景と package.json の BUILD を表示し、ドラッグできる',
+    normalTitlebar.width === 520 && normalTitlebar.bannerVisible && normalTitlebar.build === BUILD_LABEL
+      && normalTitlebar.buildVisible && normalTitlebar.fits && normalTitlebar.drag === 'drag'
+      && normalTitlebar.pointerEvents === 'none',
     JSON.stringify(normalTitlebar));
   check('Activity の chip に Items の警告を混ぜない', (await count('#list .chip .warning-count')) === 0);
   await shot('titlebar-build.png', PHASE12_OUT);

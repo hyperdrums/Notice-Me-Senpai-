@@ -54,18 +54,13 @@ li:not(.empty, .separator)::before {
   position: sticky; top: 0; z-index: 1;
   display: flex; gap: 6px; padding: 7px 8px 13px;
   background: repeating-linear-gradient(120deg, var(--hazard-cream) 0 11px, var(--charcoal) 11px 17px)
-              bottom / 100% 7px no-repeat var(--charcoal);
+              bottom / 100% 7px no-repeat,
+              url(assets/titlebar-banner.png) 0 0 / 100% 100% no-repeat var(--charcoal);
   --focus-ring: var(--lime);
 }
 .window-drag {
-  flex: 1; min-width: 0; display: flex; align-items: center; justify-content: space-between;
-  gap: 10px; padding: 0 4px; -webkit-app-region: drag;
-}
-.window-brand {
-  flex: none; pointer-events: none;
-}
-.window-brand-img {
-  display: block; height: 18px; width: auto;
+  flex: 1; min-width: 0; display: flex; align-items: center; justify-content: flex-end;
+  padding: 0 4px; -webkit-app-region: drag;
 }
 .window-label {
   pointer-events: none; white-space: nowrap;
