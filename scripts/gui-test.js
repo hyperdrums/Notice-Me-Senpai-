@@ -846,6 +846,47 @@ async function checkConfigMessage(key, settingsKey = key) {
   check('取得するのは 100 件まで', (await count(ROWS)) === 100);
   check('x-total の総数を状態に保持', await evl(assignedTotalIs(150)));
   await checkAssignedWarning('取得上限に達しても Items と警告バッジを表示する', '期限超過 1 件');
+
+  // 100 件のモック一覧をスクロールし、固定部分とホバー線を確認する。
+  const previousView = await evl(`document.querySelector('.tab.active').dataset.view`);
+  await click('.tab[data-view=assigned]');
+  const hoverPoint = await evl(`(() => {
+    const list = document.querySelector('#assignedItems');
+    list.scrollTop = 0;
+    const row = document.querySelector(${JSON.stringify(ROWS)}).getBoundingClientRect();
+    return { x: row.left + row.width / 2, y: row.top + row.height / 2 };
+  })()`);
+  await cdp.send('Input.dispatchMouseEvent', { type: 'mouseMoved', ...hoverPoint });
+  const assignedHoverMatches = `(() => {
+    const path = document.querySelector('#assigned .chip-connector path[data-target="row"]');
+    if (!path || path.getAnimations().length) return false;
+    const row = document.querySelector(${JSON.stringify(ROWS)}).getBoundingClientRect();
+    const list = document.querySelector('#assignedItems').getBoundingClientRect();
+    const centerY = (Math.max(row.top, list.top) + Math.min(row.bottom, list.bottom)) / 2;
+    const origin = path.ownerSVGElement.getBoundingClientRect();
+    const end = path.getPointAtLength(path.getTotalLength());
+    return Math.abs(end.x + origin.left - (row.left - 4)) < 0.5
+      && Math.abs(end.y + origin.top - centerY) < 0.5;
+  })()`;
+  await waitFor('スクロール前の Items のホバー線', assignedHoverMatches, 5000);
+  const scrollState = await evl(`(() => {
+    const list = document.querySelector('#assignedItems');
+    const fixed = document.querySelectorAll('.window-titlebar, header, #assigned .bar, #assignedLimit, #assigned .chip-connector');
+    const rects = () => JSON.stringify(Array.from(fixed, element => element.getBoundingClientRect().toJSON()));
+    const before = rects();
+    const previousScrollTop = list.scrollTop;
+    list.scrollTop += 12;
+    return { previousScrollTop, scrollTop: list.scrollTop, fixed: before === rects() };
+  })()`);
+  check('Items の ul をスクロールしてもタイトルバー、ヘッダ、チップバーなどの座標は変わらない', scrollState.fixed);
+  check('Items の ul の scrollTop が増える', scrollState.scrollTop > scrollState.previousScrollTop, JSON.stringify(scrollState));
+  check('Items のホバー線がスクロール後もカードの見えている左辺の中央に追従する',
+    await waitFor('スクロール後の Items のホバー線', assignedHoverMatches, 5000));
+  await checkChipConnector('スクロール後も Items の接続線がアクティブなチップに合う', 'assigned', 'assignedRepos', 'assignedTypes');
+  await cdp.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: 0, y: 0 });
+  await evl(`document.querySelector('#assignedItems').scrollTop = 0`);
+  await click(`.tab[data-view=${previousView}]`);
+
   await m.setAssignedTotal('151');
   await click('#refresh');
   await waitFor('一覧が同じでも総数だけ更新する', assignedTotalIs(151));
